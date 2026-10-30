@@ -8,7 +8,7 @@ const days = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", 
 export default function StudioSetupForm({ published, slug }: { published: boolean; slug: string }) {
   const [state, formAction, pending] = useActionState<StudioSetupState, FormData>(saveStudioSetup, {});
   const [publishState, publishAction, publishing] = useActionState<StudioSetupState, FormData>(async () => publishArtistProfile(), {});
-  return <section className="onboarding-card setup-extra-card">
+  return <section id="services" className="onboarding-card setup-extra-card">
     <div className="onboarding-card-head"><div><span className="eyebrow">STEPS 02–04 OF 04</span><h2>Services, schedule & policies</h2><p>Set the details clients need before they send a request.</p></div></div>
     <form action={formAction} className="studio-form">
       <div className="studio-form-grid">

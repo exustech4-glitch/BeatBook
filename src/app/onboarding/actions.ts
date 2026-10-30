@@ -1,5 +1,7 @@
 "use server";
 
+import { revalidatePath } from "next/cache";
+import { redirect } from "next/navigation";
 import { getCurrentProfile } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
 
@@ -41,6 +43,15 @@ export async function saveArtistProfile(_previous: OnboardingState, formData: Fo
   }, { onConflict: "user_id" });
 
   if (error?.code === "23505") return { error: "That booking link is already in use. Try another one." };
-  if (error) return { error: "We couldn’t save your studio profile. Check the Supabase migration and try again." };
-  return { success: "Studio profile saved. Next up: services, hours, and travel areas." };
+  if (error) {
+    console.error("BeatBook studio profile save failed", { code: error.code, message: error.message, details: error.details, hint: error.hint });
+    return {
+      error: process.env.NODE_ENV === "development"
+        ? `Supabase error ${error.code || "unknown"}: ${error.message}`
+        : "We couldn’t save your studio profile. Check the Supabase migration and try again.",
+    };
+  }
+  revalidatePath("/onboarding");
+  redirect("/onboarding#services");
 }
+
