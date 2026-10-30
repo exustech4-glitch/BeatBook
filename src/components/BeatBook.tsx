@@ -4,9 +4,10 @@ import { useEffect, useRef, useState, useTransition } from "react";
 import Link from "next/link";
 import { gsap } from "gsap";
 import { createBookingRequest, decideBooking, decideCancellation, decideReschedule } from "@/app/book/actions";
+import DashboardWorkspace from "@/components/DashboardWorkspace";
 
 type Status = "Pending approval" | "Confirmed" | "Awaiting payment" | "Declined" | "Request expired" | "Payment expired" | "Cancellation requested" | "Reschedule requested" | "Cancelled";
-type Booking = { id: number | string; client: string; service: string; date: string; time: string; area: string; status: Status; amount: number };
+type Booking = { id: number | string; client: string; service: string; date: string; dateKey?: string; time: string; area: string; status: Status; amount: number };
 const demoBookings: Booking[] = [
   { id: 1, client: "Amara Okafor", service: "Bridal makeup", date: "May 20, 2025", time: "10:00 AM", area: "Ikoyi", status: "Confirmed", amount: 160 },
   { id: 2, client: "Tomi Adebayo", service: "Party makeup", date: "May 22, 2025", time: "1:00 PM", area: "Lekki Phase 1", status: "Pending approval", amount: 130 },
@@ -32,7 +33,7 @@ type PublicService = (typeof demoServices)[number];
 type PublicArea = (typeof demoAreas)[number];
 type WeekHour = { weekday: number; opening_time: string; closing_time: string; is_closed: boolean };
 
-export default function BeatBook({ initialView = "dashboard", allowSwitch = true, artist, publicServices, travelAreas, workingHours, depositPercent = 25, cancellationTerms, initialBookings }: {
+export default function BeatBook({ initialView = "dashboard", allowSwitch = true, artist, publicServices, travelAreas, workingHours, depositPercent = 25, cancellationTerms, initialBookings, studioName, studioLocation, studioTimezone = "Africa/Lagos", bookingSlug = "", contactEmail = "", dashboardServices = [], dashboardAreas = [], dashboardPolicy = null }: {
   initialView?: "dashboard" | "book";
   allowSwitch?: boolean;
   artist?: { id: string; business_name: string; booking_slug: string; business_location: string; timezone: string; contact_email: string; profile_image_url?: string | null };
@@ -42,6 +43,14 @@ export default function BeatBook({ initialView = "dashboard", allowSwitch = true
   depositPercent?: number;
   cancellationTerms?: string;
   initialBookings?: Booking[];
+  studioName?: string;
+  studioLocation?: string;
+  studioTimezone?: string;
+  bookingSlug?: string;
+  contactEmail?: string;
+  dashboardServices?: { id: string; name: string; description: string; price_ngn: number; duration_minutes: number; active: boolean }[];
+  dashboardAreas?: { id: string; name: string; fee_ngn: number; active: boolean }[];
+  dashboardPolicy?: { deposit_type: string; deposit_value: number; cancellation_terms: string } | null;
 }) {
   const serviceOptions = publicServices?.length ? publicServices : demoServices;
   const areaOptions = travelAreas?.length ? travelAreas : demoAreas;
@@ -65,7 +74,13 @@ export default function BeatBook({ initialView = "dashboard", allowSwitch = true
   const total = chosen.price_ngn + travelFee;
   const deposit = depositPercent > 0 ? Math.ceil(total * depositPercent / 100) : 0;
   const pending = bookings.filter((b) => ["Pending approval", "Cancellation requested", "Reschedule requested"].includes(b.status));
-  const today = bookings.filter((b) => b.status === "Confirmed").length;
+  const todayParts = new Intl.DateTimeFormat("en", { timeZone: studioTimezone, year: "numeric", month: "2-digit", day: "2-digit" }).formatToParts(new Date());
+  const todayKey = `${todayParts.find((part) => part.type === "year")?.value}-${todayParts.find((part) => part.type === "month")?.value}-${todayParts.find((part) => part.type === "day")?.value}`;
+  const [calendarFocusDate, setCalendarFocusDate] = useState(todayKey);
+  const today = bookings.filter((b) => b.status === "Confirmed" && b.dateKey === todayKey).length;
+  const confirmedValue = bookings.filter((b) => b.status === "Confirmed").reduce((sum, b) => sum + b.amount, 0);
+  const greeting = new Date().getHours() < 12 ? "Good morning" : new Date().getHours() < 17 ? "Good afternoon" : "Good evening";
+  const headingCopy = activeNav === "Overview" ? "Here’s what’s happening at your studio today." : ({ Bookings: "Manage new requests and upcoming appointments.", Calendar: "Your appointments, organized by date.", Services: "The services currently listed on your booking page.", "Travel areas": "Where you’re available to travel for appointments.", "Deposits & policies": "The terms clients see before booking.", Settings: "Your studio profile and public booking details." } as Record<string, string>)[activeNav] || "Manage your studio on BeatBook.";
   const calendarYear = monthAnchor.getFullYear();
   const calendarMonth = monthAnchor.getMonth();
   const monthOffset = (new Date(calendarYear, calendarMonth, 1).getDay() + 6) % 7;
@@ -147,12 +162,12 @@ export default function BeatBook({ initialView = "dashboard", allowSwitch = true
     <header className="topbar">
       <button className="brand" onClick={() => setView("dashboard")} aria-label="BeatBook home"><span className="brand-mark">b.</span><span>beatbook</span></button>
       <div className="top-center"><span className="live-dot"/> Your beauty, beautifully booked</div>
-      <div className="top-actions">{allowSwitch && <button className="view-switch" onClick={() => { setView(view === "dashboard" ? "book" : "dashboard"); setNotice(""); }}><span>◉</span> {view === "dashboard" ? "Client preview" : "Artist dashboard"} <span>↗</span></button>}<button className="avatar" aria-label="Account menu">S</button></div>
+      <div className="top-actions">{allowSwitch && <button className="view-switch" onClick={() => { setView(view === "dashboard" ? "book" : "dashboard"); setNotice(""); }}><span>◉</span> {view === "dashboard" ? "Client preview" : "Artist dashboard"} <span>↗</span></button>}<button className="avatar" aria-label="Open settings" title="Open settings" onClick={() => { setView("dashboard"); setActiveNav("Settings"); }}>S</button></div>
     </header>
 
     {view === "dashboard" ? <div className="dashboard-layout">
       <aside className="sidebar">
-        <div className="workspace-label">YOUR STUDIO</div><div className="artist-mini"><div className="artist-avatar">S</div><div><strong>Studio Sola</strong><span>Makeup artist <i className="verified">✓</i></span></div><span className="dots">•••</span></div>
+        <div className="workspace-label">YOUR STUDIO</div><div className="artist-mini"><div className="artist-avatar">{(studioName || "S")[0]}</div><div><strong>{studioName || "Your studio"}</strong><span>Makeup artist <i className="verified">✓</i></span></div><span className="dots">•••</span></div>
         <nav className="side-nav" aria-label="Artist dashboard">
           {navItems.map((item, i) => <button key={item} className={activeNav === item ? "nav-item active" : "nav-item"} onClick={() => setActiveNav(item)}><span className="nav-icon">{["⌂", "▤", "▦", "✳", "⌖", "◇", "⚙"][i]}</span>{item}{item === "Bookings" && pending.length > 0 && <span className="nav-count">{pending.length}</span>}</button>)}
         </nav>
@@ -160,13 +175,14 @@ export default function BeatBook({ initialView = "dashboard", allowSwitch = true
       </aside>
 
       <section className="main-panel">
-        <div className="page-heading"><div><div className="eyebrow">TUESDAY, MAY 20, 2025</div><h1>Good morning, Sola <span className="wave">✳</span></h1><p>Here’s what’s happening at your studio today.</p></div><div className="heading-actions"><button className="icon-button" aria-label="Notifications">♧<i/></button><button className="button secondary" onClick={() => setView("book")}>View booking page <span>↗</span></button></div></div>
+        <div className="page-heading"><div><div className="eyebrow">{new Intl.DateTimeFormat("en", { weekday: "long", month: "long", day: "numeric", year: "numeric", timeZone: studioTimezone }).format(new Date()).toUpperCase()}</div><h1>{activeNav === "Overview" ? `${greeting}, ${(studioName || "there").split(" ")[0]}` : activeNav} <span className="wave">✳</span></h1><p>{headingCopy}</p></div><div className="heading-actions"><button className="icon-button" aria-label="Open bookings" title="Open bookings" onClick={() => setActiveNav("Bookings")}>♧<i/></button><button className="button secondary" onClick={() => setView("book")}>View booking page <span>↗</span></button></div></div>
         {notice && <div className="notice"><span>✓</span>{notice}<button onClick={() => setNotice("")} aria-label="Dismiss">×</button></div>}
+        {activeNav === "Overview" ? <>
         <div className="metric-grid">
           <article className="metric-card"><div className="metric-top"><span>Appointments today</span><span className="metric-icon blush">✳</span></div><div className="metric-value">{today}<small className="trend">↗ 2 this week</small></div><div className="metric-foot">You’re right on schedule</div></article>
           <article className="metric-card"><div className="metric-top"><span>Pending requests</span><span className="metric-icon amber">◷</span></div><div className="metric-value">{pending.length}<small className="attention">Needs your attention</small></div><div className="metric-foot">Requests expire after 24 hours</div></article>
-          <article className="metric-card"><div className="metric-top"><span>Upcoming this week</span><span className="metric-icon lavender">▦</span></div><div className="metric-value">8<small className="trend">↗ 3 new</small></div><div className="metric-foot">Your calendar is filling up</div></article>
-          <article className="metric-card revenue"><div className="metric-top"><span>Deposits received</span><span className="metric-icon green">₦</span></div><div className="metric-value">₦{(today * 40000).toLocaleString()}<small className="trend">This month</small></div><div className="metric-foot">From confirmed appointments</div></article>
+          <article className="metric-card"><div className="metric-top"><span>Upcoming appointments</span><span className="metric-icon lavender">▦</span></div><div className="metric-value">{bookings.filter((b) => b.status === "Confirmed" || b.status === "Awaiting payment").length}</div><div className="metric-foot">Confirmed and awaiting deposit</div></article>
+          <article className="metric-card revenue"><div className="metric-top"><span>Confirmed value</span><span className="metric-icon green">₦</span></div><div className="metric-value">₦{confirmedValue.toLocaleString()}</div><div className="metric-foot">Total value of confirmed appointments</div></article>
         </div>
 
         <div className="content-grid">
@@ -180,12 +196,13 @@ export default function BeatBook({ initialView = "dashboard", allowSwitch = true
             </section>
           </div>
           <aside className="right-column">
-            <section className="card calendar-card"><div className="section-head"><div><h2>Your calendar</h2><p>May 2025</p></div><div className="calendar-controls"><button aria-label="Previous month">‹</button><button aria-label="Next month">›</button></div></div><div className="calendar-grid"><div className="weekday">M</div><div className="weekday">T</div><div className="weekday">W</div><div className="weekday">T</div><div className="weekday">F</div><div className="weekday">S</div><div className="weekday">S</div>{monthDays.map((d, i) => <button key={i} className={`calendar-day ${d === 20 ? "today" : ""} ${d === 22 || d === 25 ? "has-event" : ""}`}>{d}</button>)}</div><div className="calendar-legend"><span><i className="legend-dot plum-dot"/> Appointment</span><span><i className="legend-dot gray-dot"/> Today</span></div></section>
+            <section className="card calendar-card"><div className="section-head"><div><h2>Your calendar</h2><p>{monthLabel}</p></div><div className="calendar-controls"><button aria-label="Previous month" onClick={() => setMonthAnchor(new Date(calendarYear, calendarMonth - 1, 1))}>‹</button><button aria-label="Next month" onClick={() => setMonthAnchor(new Date(calendarYear, calendarMonth + 1, 1))}>›</button></div></div><div className="calendar-grid"><div className="weekday">M</div><div className="weekday">T</div><div className="weekday">W</div><div className="weekday">T</div><div className="weekday">F</div><div className="weekday">S</div><div className="weekday">S</div>{monthDays.map((d, i) => { const key = d ? `${calendarYear}-${String(calendarMonth + 1).padStart(2, "0")}-${String(d).padStart(2, "0")}` : ""; return <button key={i} disabled={!d} className={`calendar-day ${key === todayKey ? "today" : ""} ${bookings.some((b) => b.dateKey === key) ? "has-event" : ""}`} onClick={() => { if (key) { setCalendarFocusDate(key); setActiveNav("Calendar"); } }}>{d}</button>; })}</div><div className="calendar-legend"><span><i className="legend-dot plum-dot"/> Appointment</span><span><i className="legend-dot gray-dot"/> Today</span></div></section>
             <section className="setup-card"><div className="setup-header"><div className="setup-icon">✳</div><span>YOUR STUDIO</span><span className="setup-progress">4/5</span></div><h3>Almost ready to shine</h3><p>Complete your setup to start receiving bookings.</p><div className="progress-track"><i/></div><div className="progress-label"><span>Profile & services</span><strong>80%</strong></div><button className="setup-action" onClick={() => setActiveNav("Services")}>Continue setup <span>→</span></button></section>
             <section className="tip-card"><span className="tip-icon">✧</span><div><strong>A little studio tip</strong><p>Profiles with a photo get 2× more booking requests. Add yours to stand out.</p><button onClick={() => setActiveNav("Settings")}>Update your profile <span>→</span></button></div></section>
           </aside>
         </div>
-        <footer className="footer"><span>© 2025 BeatBook</span><span>Made for artists, with love <b>♥</b></span><span>Help&nbsp;&nbsp; · &nbsp;&nbsp;Privacy&nbsp;&nbsp; · &nbsp;&nbsp;Terms</span></footer>
+        <footer className="footer"><span>© {new Date().getFullYear()} BeatBook</span><span>Made for artists, with love <b>♥</b></span><span>Help&nbsp;&nbsp; · &nbsp;&nbsp;Privacy&nbsp;&nbsp; · &nbsp;&nbsp;Terms</span></footer>
+        </> : <DashboardWorkspace section={activeNav} bookings={bookings} services={dashboardServices} areas={dashboardAreas} policy={dashboardPolicy} businessName={studioName || ""} businessLocation={studioLocation || ""} timezone={studioTimezone} bookingSlug={bookingSlug} contactEmail={contactEmail} initialDate={calendarFocusDate} onDecide={decide} onReviewChange={reviewChange} pending={bookingPending} />}
       </section>
     </div> : <div className="booking-page" ref={bookingMotionRoot}>
       <header className="booking-header"><button className="back-link" onClick={() => allowSwitch ? setView("dashboard") : (window.location.href = "/")}>← <span>{allowSwitch ? "Back to dashboard" : "Back to BeatBook"}</span></button><div className="client-brand"><span className="brand-mark">b.</span> beatbook</div><span className="secure-label">✦ &nbsp;A BEAUTY APPOINTMENT, MADE EASY</span></header>
