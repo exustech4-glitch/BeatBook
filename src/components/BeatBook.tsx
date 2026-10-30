@@ -1,54 +1,127 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useState, useTransition } from "react";
+import Link from "next/link";
+import { createBookingRequest, decideBooking, decideCancellation, decideReschedule } from "@/app/book/actions";
 
-type Status = "Pending approval" | "Confirmed" | "Awaiting payment" | "Declined";
-type Booking = { id: number; client: string; service: string; date: string; time: string; area: string; status: Status; amount: number };
-const initialBookings: Booking[] = [
+type Status = "Pending approval" | "Confirmed" | "Awaiting payment" | "Declined" | "Request expired" | "Payment expired" | "Cancellation requested" | "Reschedule requested" | "Cancelled";
+type Booking = { id: number | string; client: string; service: string; date: string; time: string; area: string; status: Status; amount: number };
+const demoBookings: Booking[] = [
   { id: 1, client: "Amara Okafor", service: "Bridal makeup", date: "May 20, 2025", time: "10:00 AM", area: "Ikoyi", status: "Confirmed", amount: 160 },
   { id: 2, client: "Tomi Adebayo", service: "Party makeup", date: "May 22, 2025", time: "1:00 PM", area: "Lekki Phase 1", status: "Pending approval", amount: 130 },
   { id: 3, client: "Nneka Obi", service: "Engagement makeup", date: "May 25, 2025", time: "2:00 PM", area: "Victoria Island", status: "Pending approval", amount: 145 },
 ];
-const services = [
-  { name: "Bridal makeup", description: "Your moment, made unforgettable.", duration: "2 hours", price: 150, tag: "MOST LOVED", icon: "✳" },
-  { name: "Party makeup", description: "A little extra for your next big night.", duration: "1.5 hours", price: 120, tag: "", icon: "✺" },
-  { name: "Engagement makeup", description: "Soft glam for the start of forever.", duration: "2 hours", price: 130, tag: "", icon: "♡" },
+const demoServices = [
+  { id: "demo-bridal", name: "Bridal makeup", description: "Your moment, made unforgettable.", duration_minutes: 120, price_ngn: 75000, tag: "MOST LOVED", icon: "✳" },
+  { id: "demo-party", name: "Party makeup", description: "A little extra for your next big night.", duration_minutes: 90, price_ngn: 60000, tag: "", icon: "✺" },
+  { id: "demo-engagement", name: "Engagement makeup", description: "Soft glam for the start of forever.", duration_minutes: 120, price_ngn: 65000, tag: "", icon: "♡" },
 ];
+const demoAreas = [{ id: "demo-ikoyi", name: "Ikoyi", fee_ngn: 5000 }, { id: "demo-lekki", name: "Lekki Phase 1", fee_ngn: 7500 }, { id: "demo-vi", name: "Victoria Island", fee_ngn: 6000 }];
 const navItems = ["Overview", "Bookings", "Calendar", "Services", "Travel areas", "Deposits & policies", "Settings"];
+function durationLabel(minutes: number) { return minutes % 60 === 0 ? `${minutes / 60} hr${minutes === 60 ? "" : "s"}` : `${Math.floor(minutes / 60)} hr ${minutes % 60} min`; }
+function displayTime(value: string) { const [hour, minute] = value.split(":").map(Number); return new Intl.DateTimeFormat("en", { hour: "numeric", minute: "2-digit", hour12: true }).format(new Date(2000, 0, 1, hour, minute)); }
 
-export default function BeatBook({ initialView = "dashboard", allowSwitch = true }: { initialView?: "dashboard" | "book"; allowSwitch?: boolean }) {
+type PublicService = (typeof demoServices)[number];
+type PublicArea = (typeof demoAreas)[number];
+type WeekHour = { weekday: number; opening_time: string; closing_time: string; is_closed: boolean };
+
+export default function BeatBook({ initialView = "dashboard", allowSwitch = true, artist, publicServices, travelAreas, workingHours, depositPercent = 25, cancellationTerms, initialBookings }: {
+  initialView?: "dashboard" | "book";
+  allowSwitch?: boolean;
+  artist?: { id: string; business_name: string; booking_slug: string; business_location: string; timezone: string; contact_email: string };
+  publicServices?: PublicService[];
+  travelAreas?: PublicArea[];
+  workingHours?: WeekHour[];
+  depositPercent?: number;
+  cancellationTerms?: string;
+  initialBookings?: Booking[];
+}) {
+  const serviceOptions = publicServices?.length ? publicServices : demoServices;
+  const areaOptions = travelAreas?.length ? travelAreas : demoAreas;
   const [view, setView] = useState<"dashboard" | "book">(initialView);
   const [activeNav, setActiveNav] = useState("Overview");
-  const [bookings, setBookings] = useState(initialBookings);
+  const [bookings, setBookings] = useState(initialBookings ?? demoBookings);
   const [selected, setSelected] = useState(0);
-  const [day, setDay] = useState(15);
-  const [time, setTime] = useState("10:00 AM");
-  const [area, setArea] = useState("Ikoyi");
+  const [monthAnchor, setMonthAnchor] = useState(() => new Date());
+  const [selectedDate, setSelectedDate] = useState(() => new Date(Date.now() + 86400000).toISOString().slice(0, 10));
+  const [time, setTime] = useState("10:00");
+  const [area, setArea] = useState(areaOptions[0]?.id || "demo-ikoyi");
   const [address, setAddress] = useState("");
   const [notice, setNotice] = useState("");
   const [modal, setModal] = useState(false);
-  const chosen = services[selected];
-  const travelFee = area === "Ikoyi" ? 10 : area === "Lekki Phase 1" ? 15 : 20;
-  const total = chosen.price + travelFee;
-  const deposit = Math.round(total * 0.25);
-  const pending = bookings.filter((b) => b.status === "Pending approval");
+  const [bookingError, setBookingError] = useState("");
+  const [bookingPending, startBooking] = useTransition();
+  const chosen = serviceOptions[selected] || serviceOptions[0];
+  const chosenArea = areaOptions.find((item) => item.id === area) || areaOptions[0];
+  const travelFee = chosenArea?.fee_ngn || 0;
+  const total = chosen.price_ngn + travelFee;
+  const deposit = depositPercent > 0 ? Math.ceil(total * depositPercent / 100) : 0;
+  const pending = bookings.filter((b) => ["Pending approval", "Cancellation requested", "Reschedule requested"].includes(b.status));
   const today = bookings.filter((b) => b.status === "Confirmed").length;
-  const monthDays = useMemo(() => Array.from({ length: 35 }, (_, i) => i < 3 ? null : i - 2 <= 31 ? i - 2 : null), []);
+  const calendarYear = monthAnchor.getFullYear();
+  const calendarMonth = monthAnchor.getMonth();
+  const monthOffset = (new Date(calendarYear, calendarMonth, 1).getDay() + 6) % 7;
+  const monthDays = Array.from({ length: monthOffset + new Date(calendarYear, calendarMonth + 1, 0).getDate() }, (_, i) => i < monthOffset ? null : i - monthOffset + 1);
+  const monthLabel = new Intl.DateTimeFormat("en", { month: "long", year: "numeric" }).format(monthAnchor);
+  const selectedLocalDate = selectedDate ? new Date(`${selectedDate}T12:00:00`) : null;
+  const prettySelectedDate = selectedLocalDate ? new Intl.DateTimeFormat("en", { month: "long", day: "numeric", year: "numeric" }).format(selectedLocalDate) : "Choose a date";
+  const todayLocal = new Date().toISOString().slice(0, 10);
+  const weekday = selectedLocalDate?.getDay();
+  const dayHours = workingHours?.find((item) => item.weekday === weekday && !item.is_closed);
+  const selectedDuration = chosen.duration_minutes;
+  const availableTimes = dayHours ? (() => {
+    const [openHour, openMinute] = dayHours.opening_time.slice(0, 5).split(":").map(Number);
+    const [closeHour, closeMinute] = dayHours.closing_time.slice(0, 5).split(":").map(Number);
+    const first = Math.ceil((openHour * 60 + openMinute) / 30) * 30;
+    const last = closeHour * 60 + closeMinute - selectedDuration;
+    return Array.from({ length: Math.max(0, Math.floor((last - first) / 30) + 1) }, (_, i) => first + i * 30).map((minutes) => `${String(Math.floor(minutes / 60)).padStart(2, "0")}:${String(minutes % 60).padStart(2, "0")}`);
+  })() : workingHours ? [] : ["10:00", "13:00", "16:00"];
 
-  function decide(id: number, approve: boolean) {
+  function decide(id: number | string, approve: boolean) {
+    if (typeof id === "string" && !id.startsWith("demo-")) {
+      startBooking(async () => {
+        const result = await decideBooking(id, approve);
+        if (result.error) { setNotice(result.error); return; }
+        setBookings((rows) => rows.map((b) => b.id === id ? { ...b, status: approve ? "Awaiting payment" : "Declined" } : b));
+        setNotice(result.success || "Booking updated.");
+      });
+      return;
+    }
     setBookings((rows) => rows.map((b) => b.id === id ? { ...b, status: approve ? "Awaiting payment" : "Declined" } : b));
     setNotice(approve ? "Request approved. A 15-minute test payment reservation is active." : "Request declined. The client has been notified.");
   }
+  function reviewChange(id: number | string, approve: boolean, kind: "Cancellation requested" | "Reschedule requested") {
+    if (typeof id !== "string") return;
+    startBooking(async () => {
+      const result = kind === "Cancellation requested" ? await decideCancellation(id, approve) : await decideReschedule(id, approve);
+      if (result.error) { setNotice(result.error); return; }
+      setBookings((rows) => rows.map((b) => b.id === id ? { ...b, status: kind === "Cancellation requested" && approve ? "Cancelled" : "Confirmed" } : b));
+      setNotice(result.success || "Booking updated.");
+    });
+  }
   function submitBooking() {
     if (!address.trim()) { setNotice("Add your appointment address to continue."); return; }
+    if (!selectedDate || !time || !chosenArea) { setNotice("Choose an available date, time, and travel area."); return; }
+    setBookingError("");
     setModal(true);
   }
   function confirmRequest() {
-    const item: Booking = { id: Date.now(), client: "You", service: chosen.name, date: `May ${day}, 2025`, time, area, status: "Pending approval", amount: total };
-    setBookings((rows) => [item, ...rows]);
-    setModal(false);
-    setNotice("Request sent. You’ll hear back from the artist soon.");
-    setView("book");
+    if (!artist || chosen.id.startsWith("demo-") || chosenArea.id.startsWith("demo-")) {
+      setBookingError("This is a preview booking page. Publish a studio profile and services to accept real requests.");
+      return;
+    }
+    const payload = new FormData();
+    payload.set("artist_id", artist.id);
+    payload.set("service_id", chosen.id);
+    payload.set("travel_area_id", chosenArea.id);
+    payload.set("appointment_start", `${selectedDate}T${time}`);
+    payload.set("full_address", address);
+    startBooking(async () => {
+      const result = await createBookingRequest({}, payload);
+      if (result.error) { setBookingError(result.error); return; }
+      setModal(false);
+      setNotice(result.success || "Your request was sent.");
+    });
   }
 
   return <main className="app-shell">
@@ -80,7 +153,7 @@ export default function BeatBook({ initialView = "dashboard", allowSwitch = true
         <div className="content-grid">
           <div className="left-column">
             <section className="card booking-card"><div className="section-head"><div><h2>Booking requests <span className="pill-count">{pending.length}</span></h2><p>Review and respond to new requests</p></div><button className="text-link" onClick={() => setActiveNav("Bookings")}>View all <span>→</span></button></div>
-              {pending.length ? pending.map((b) => <div className="request-row" key={b.id}><div className="client-photo">{b.client.split(" ").map(n => n[0]).join("")}</div><div className="request-info"><div className="client-line"><strong>{b.client}</strong><span className="status amber-status">{b.status}</span></div><div className="request-details">{b.service} <span>·</span> {b.date} at {b.time}</div><div className="request-meta">⌖ {b.area} <span>·</span> ₦{b.amount.toLocaleString()}</div></div><div className="request-actions"><button className="quiet-button" onClick={() => setNotice(`Details for ${b.client}: ${b.service}, ${b.date} at ${b.time}.`)}>Review</button><button className="approve-button" onClick={() => decide(b.id, true)}>Approve</button><button className="decline-button" onClick={() => decide(b.id, false)} aria-label="Decline request">×</button></div></div>) : <div className="empty-state">All caught up. New requests will appear here.</div>}
+              {pending.length ? pending.map((b) => <div className="request-row" key={b.id}><div className="client-photo">{b.client.split(" ").map(n => n[0]).join("")}</div><div className="request-info"><div className="client-line"><strong>{b.client}</strong><span className="status amber-status">{b.status}</span></div><div className="request-details">{b.service} <span>·</span> {b.date} at {b.time}</div><div className="request-meta">⌖ {b.area} <span>·</span> ₦{b.amount.toLocaleString()}</div></div><div className="request-actions">{b.status === "Pending approval" ? <><button className="quiet-button" onClick={() => setNotice(`Details for ${b.client}: ${b.service}, ${b.date} at ${b.time}.`)}>Review</button><button className="approve-button" disabled={bookingPending} onClick={() => decide(b.id, true)}>Approve</button><button className="decline-button" disabled={bookingPending} onClick={() => decide(b.id, false)} aria-label="Decline request">×</button></> : <><button className="quiet-button" disabled={bookingPending} onClick={() => reviewChange(b.id, false, b.status as "Cancellation requested" | "Reschedule requested")}>Decline</button><button className="approve-button" disabled={bookingPending} onClick={() => reviewChange(b.id, true, b.status as "Cancellation requested" | "Reschedule requested")}>Approve</button></>}</div></div>) : <div className="empty-state">All caught up. New requests will appear here.</div>}
             </section>
             <section className="card appointments-card"><div className="section-head"><div><h2>Upcoming appointments</h2><p>Your next few bookings</p></div><button className="select-small" onClick={() => setActiveNav("Calendar")}>This week⌄</button></div>
               <div className="appointment-head"><span>CLIENT</span><span>DATE & TIME</span><span>SERVICE</span><span>STATUS</span></div>
@@ -100,16 +173,17 @@ export default function BeatBook({ initialView = "dashboard", allowSwitch = true
       <div className="booking-intro"><span className="eyebrow">MEET YOUR ARTIST</span><h1>Make room for a little <em>magic.</em></h1><p>Book your next beautiful moment with Studio Sola.</p></div>
       {notice && <div className="notice booking-notice"><span>✓</span>{notice}<button onClick={() => setNotice("")} aria-label="Dismiss">×</button></div>}
       <div className="booking-layout"><div className="booking-main">
-        <section className="booking-section artist-card"><div className="artist-portrait">S<span className="portrait-flower">✿</span></div><div><span className="verified-label">✦ VERIFIED ARTIST</span><h2>Studio Sola</h2><p>Makeup artist · Lagos, Nigeria</p><div className="artist-rating">★★★★★ <span>4.9 <i>(38 reviews)</i></span></div></div><button className="share-button" aria-label="Share artist">↗</button></section>
-        <section className="booking-section"><div className="booking-step"><span>01</span><div><h2>Choose your service</h2><p>Find the look that feels like you.</p></div></div><div className="service-grid">{services.map((service, i) => <button className={`service-card ${selected === i ? "selected" : ""}`} key={service.name} onClick={() => setSelected(i)}><div className={`service-art art-${i}`}><span>{service.icon}</span>{service.tag && <i>{service.tag}</i>}</div><div className="service-copy"><h3>{service.name}</h3><p>{service.description}</p><div className="service-meta"><strong>₦{service.price.toLocaleString()}</strong><span>◷ {service.duration}</span></div></div>{selected === i && <span className="selected-check">✓</span>}</button>)}</div></section>
-        <section className="booking-section"><div className="booking-step"><span>02</span><div><h2>Pick a date & time</h2><p>Choose a moment that works for you.</p></div></div><div className="date-panel"><div className="date-month"><button aria-label="Previous month">‹</button><strong>May 2025</strong><button aria-label="Next month">›</button></div><div className="date-grid"><span>M</span><span>T</span><span>W</span><span>T</span><span>F</span><span>S</span><span>S</span>{monthDays.slice(0, 35).map((d, i) => <button key={i} disabled={!d || d < 20 || d === 24 || d === 25 || d === 31} className={`${d === day ? "chosen-day" : ""} ${d === 20 ? "today-date" : ""}` } onClick={() => d && setDay(d)}>{d}</button>)}</div><div className="time-label">AVAILABLE TIMES <span>Lagos time (WAT)</span></div><div className="time-options">{["10:00 AM", "1:00 PM", "4:00 PM"].map((t) => <button className={time === t ? "time-selected" : ""} key={t} onClick={() => setTime(t)}>{t}</button>)}</div></div></section>
-        <section className="booking-section"><div className="booking-step"><span>03</span><div><h2>Where should we meet?</h2><p>Your details help us make the day seamless.</p></div></div><label className="field-label">APPOINTMENT ADDRESS<input value={address} onChange={(e) => setAddress(e.target.value)} placeholder="Street address, building, or landmark" /></label><label className="field-label">YOUR AREA<select value={area} onChange={(e) => setArea(e.target.value)}><option>Ikoyi</option><option>Lekki Phase 1</option><option>Victoria Island</option></select><small>Travel fees vary by area. No hidden charges.</small></label></section>
-        <div className="policy-note"><span>♡</span><p><strong>A note from Studio Sola</strong><br/>A 25% deposit secures your appointment after the artist approves your request. Cancellations are accepted up to 48 hours before your booking.</p></div>
+        <section className="booking-section artist-card"><div className="artist-portrait">{artist?.business_name?.[0] || "S"}<span className="portrait-flower">✿</span></div><div><span className="verified-label">✦ VERIFIED ARTIST</span><h2>{artist?.business_name || "Studio Sola"}</h2><p>Makeup artist · {artist?.business_location || "Lagos, Nigeria"}</p><div className="artist-rating">★★★★★ <span>4.9 <i>(38 reviews)</i></span></div></div><button className="share-button" aria-label="Share artist">↗</button></section>
+        <section className="booking-section"><div className="booking-step"><span>01</span><div><h2>Choose your service</h2><p>Find the look that feels like you.</p></div></div><div className="service-grid">{serviceOptions.map((service, i) => <button className={`service-card ${selected === i ? "selected" : ""}`} key={service.id} onClick={() => { setSelected(i); setTime(""); }}><div className={`service-art art-${i % 3}`}><span>{service.icon}</span>{service.tag && <i>{service.tag}</i>}</div><div className="service-copy"><h3>{service.name}</h3><p>{service.description}</p><div className="service-meta"><strong>₦{service.price_ngn.toLocaleString()}</strong><span>◷ {durationLabel(service.duration_minutes)}</span></div></div>{selected === i && <span className="selected-check">✓</span>}</button>)}</div></section>
+        <section className="booking-section"><div className="booking-step"><span>02</span><div><h2>Pick a date & time</h2><p>Choose a moment that works for you.</p></div></div><div className="date-panel"><div className="date-month"><button aria-label="Previous month" onClick={() => setMonthAnchor(new Date(calendarYear, calendarMonth - 1, 1))}>‹</button><strong>{monthLabel}</strong><button aria-label="Next month" onClick={() => setMonthAnchor(new Date(calendarYear, calendarMonth + 1, 1))}>›</button></div><div className="date-grid"><span>M</span><span>T</span><span>W</span><span>T</span><span>F</span><span>S</span><span>S</span>{monthDays.map((d, i) => { const dateString = d ? `${calendarYear}-${String(calendarMonth + 1).padStart(2, "0")}-${String(d).padStart(2, "0")}` : ""; return <button key={i} disabled={!d || dateString < todayLocal} className={`${dateString === selectedDate ? "chosen-day" : ""} ${dateString === todayLocal ? "today-date" : ""}`} onClick={() => { if (dateString) { setSelectedDate(dateString); setTime(""); } }}>{d}</button>; })}</div><div className="time-label">AVAILABLE TIMES <span>{artist?.timezone || "Africa/Lagos"}</span></div><div className="time-options">{availableTimes.map((t) => <button className={time === t ? "time-selected" : ""} key={t} onClick={() => setTime(t)}>{displayTime(t)}</button>)}{availableTimes.length === 0 && <span className="no-times">No times available for this date.</span>}</div></div></section>
+        <section className="booking-section"><div className="booking-step"><span>03</span><div><h2>Where should we meet?</h2><p>Your details help us make the day seamless.</p></div></div><label className="field-label">APPOINTMENT ADDRESS<input value={address} onChange={(e) => setAddress(e.target.value)} placeholder="Street address, building, or landmark" /></label><label className="field-label">YOUR AREA<select value={area} onChange={(e) => setArea(e.target.value)}>{areaOptions.map((option) => <option key={option.id} value={option.id}>{option.name} · ₦{option.fee_ngn.toLocaleString()}</option>)}</select><small>Travel fees vary by area. No hidden charges.</small></label></section>
+        <div className="policy-note"><span>♡</span><p><strong>A note from {artist?.business_name || "Studio Sola"}</strong><br/>{depositPercent}% deposit secures your appointment after the artist approves your request. {cancellationTerms || "Cancellations are accepted up to 48 hours before your booking."}</p></div>
       </div>
-      <aside className="booking-aside"><div className="summary-card"><span className="eyebrow">YOUR APPOINTMENT</span><h2>A little look at the details.</h2><div className="summary-service"><span className="summary-flower">{chosen.icon}</span><div><strong>{chosen.name}</strong><span>{chosen.duration} · Studio Sola</span></div><strong>₦{chosen.price.toLocaleString()}</strong></div><div className="summary-date"><span>▦</span><div><strong>May {day}, 2025 · {time}</strong><small>Tuesday · Lagos time</small></div></div><div className="summary-line"><span>Service</span><strong>₦{chosen.price.toLocaleString()}</strong></div><div className="summary-line"><span>Travel · {area}</span><strong>₦{travelFee.toLocaleString()}</strong></div><div className="summary-total"><span>Total</span><strong>₦{total.toLocaleString()}</strong></div><div className="deposit-line"><span>Deposit to secure</span><strong>₦{deposit.toLocaleString()}</strong></div><div className="balance-line"><span>Remaining after deposit</span><span>₦{(total - deposit).toLocaleString()}</span></div><button className="button primary request-button" onClick={submitBooking}>Request this appointment <span>→</span></button><p className="no-charge">No payment is taken until your artist approves.</p><div className="secure-line">♡ &nbsp;Your details are always kept private</div></div><div className="aside-help"><span>Need a little help?</span><button onClick={() => setNotice("Contact Studio Sola at hello@studiosola.example")}>Ask your artist ↗</button></div></aside></div>
+      <aside className="booking-aside"><div className="summary-card"><span className="eyebrow">YOUR APPOINTMENT</span><h2>A little look at the details.</h2><div className="summary-service"><span className="summary-flower">{chosen.icon}</span><div><strong>{chosen.name}</strong><span>{durationLabel(chosen.duration_minutes)} · {artist?.business_name || "Studio Sola"}</span></div><strong>₦{chosen.price_ngn.toLocaleString()}</strong></div><div className="summary-date"><span>▦</span><div><strong>{prettySelectedDate} · {time ? displayTime(time) : "Choose a time"}</strong><small>{artist?.timezone || "Africa/Lagos"}</small></div></div><div className="summary-line"><span>Service</span><strong>₦{chosen.price_ngn.toLocaleString()}</strong></div><div className="summary-line"><span>Travel · {chosenArea?.name}</span><strong>₦{travelFee.toLocaleString()}</strong></div><div className="summary-total"><span>Total</span><strong>₦{total.toLocaleString()}</strong></div><div className="deposit-line"><span>Deposit to secure</span><strong>₦{deposit.toLocaleString()}</strong></div><div className="balance-line"><span>Remaining after deposit</span><span>₦{(total - deposit).toLocaleString()}</span></div><button className="button primary request-button" onClick={submitBooking}>Request this appointment <span>→</span></button><p className="no-charge">No payment is taken until your artist approves.</p><div className="secure-line">♡ &nbsp;Your details are always kept private</div></div><div className="aside-help"><span>Need a little help?</span><button onClick={() => setNotice(`Contact ${artist?.business_name || "your artist"} at ${artist?.contact_email || "their listed email"}`)}>Ask your artist ↗</button></div></aside></div>
       <footer className="booking-footer"><span>© 2025 BeatBook</span><span>Beauty bookings, beautifully organized.</span><span>Privacy · Terms · Help</span></footer>
     </div>}
 
-    {modal && <div className="modal-backdrop" role="presentation" onMouseDown={(e) => { if (e.target === e.currentTarget) setModal(false); }}><section className="confirm-modal" role="dialog" aria-modal="true" aria-labelledby="confirm-title"><button className="modal-close" onClick={() => setModal(false)}>×</button><div className="modal-flower">✿</div><span className="eyebrow">ONE LAST THING</span><h2 id="confirm-title">Let’s send your request.</h2><p>Studio Sola will review your appointment and get back to you within 24 hours. You won’t be charged now.</p><div className="modal-detail"><span>{chosen.name} · May {day}, 2025 at {time}</span><strong>₦{total.toLocaleString()} total</strong></div><button className="button primary" onClick={confirmRequest}>Send booking request <span>→</span></button><button className="modal-cancel" onClick={() => setModal(false)}>I’d like to make a change</button><small>Deposit of ₦{deposit.toLocaleString()} only after approval · Test booking flow</small></section></div>}
+    {modal && <div className="modal-backdrop" role="presentation" onMouseDown={(e) => { if (e.target === e.currentTarget) setModal(false); }}><section className="confirm-modal" role="dialog" aria-modal="true" aria-labelledby="confirm-title"><button className="modal-close" onClick={() => setModal(false)}>×</button><div className="modal-flower">✿</div><span className="eyebrow">ONE LAST THING</span><h2 id="confirm-title">Let’s send your request.</h2><p>{artist?.business_name || "Studio Sola"} will review your appointment and get back to you within 24 hours. You won’t be charged now.</p><div className="modal-detail"><span>{chosen.name} · {prettySelectedDate} at {time ? displayTime(time) : "Choose a time"}</span><strong>₦{total.toLocaleString()} total</strong></div>{bookingError && <p className="auth-error" role="alert">{bookingError}{bookingError.startsWith("Sign in") && <> <Link href={`/sign-in?next=${encodeURIComponent(`/book/${artist?.booking_slug || ""}`)}`}>Sign in</Link> or <Link href="/sign-up">create an account</Link>.</>}</p>}<button className="button primary" onClick={confirmRequest} disabled={bookingPending}>{bookingPending ? "Sending request…" : "Send booking request"} <span>→</span></button><button className="modal-cancel" onClick={() => setModal(false)}>I’d like to make a change</button><small>Deposit of ₦{deposit.toLocaleString()} only after approval · Simulated payments only</small></section></div>}
   </main>;
 }
+

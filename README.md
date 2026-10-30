@@ -1,30 +1,28 @@
 # BeatBook
 
-BeatBook is a Next.js app for an independent makeup artist and the clients who book them.
+BeatBook is a Next.js booking app for an independent makeup artist and their clients. It includes artist onboarding, a published booking page, booking requests, artist approval, a temporary deposit reservation, client booking management, and cancellation or reschedule requests.
 
-## Run locally
+## Local development
 
 ```bash
 npm install
 npm run dev
 ```
 
-Open `http://localhost:3000`. The root route opens the public booking page. Artist dashboard access requires an authenticated artist account.
+Copy `.env.example` to `.env.local` and set the public Supabase project URL, publishable key, and site URL. The root route opens the booking page. Create an artist account to set up and publish the artist profile, and a client account to request appointments.
 
-## Connect Supabase
+## Production setup
 
-1. Create a Supabase project and copy `.env.example` to `.env.local`.
-2. Set `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY`, and `NEXT_PUBLIC_SITE_URL` from your project.
-3. Apply `supabase/migrations/20261030000100_beatbook_foundation.sql` in the Supabase SQL Editor, or link the Supabase CLI and run `supabase db push`.
-4. In Supabase Auth, keep email confirmation enabled and add `http://localhost:3000/auth/callback` to the allowed redirect URLs. Add the production callback URL when deploying.
-5. Restart the Next.js server after changing environment variables.
+Follow [DEPLOYMENT.md](./DEPLOYMENT.md) to configure Supabase and Vercel. Apply both SQL migrations in order before using booking actions. Payments are simulated for this release; the app does not collect real money.
 
-## Phase 2
+## Included
 
-- Cookie based Supabase sign-up, sign-in, email confirmation callback, and sign-out.
-- Artist and client roles are created by the database trigger. A user cannot change their own role through the profile table.
-- The artist dashboard and onboarding routes require an authenticated artist account.
-- Artist profile setup saves a business profile to Supabase and supports resuming from saved data.
-- The database migration adds artist services, weekly working hours, travel areas, blocked dates, and versioned policies with row level security.
+- Supabase email sign-up, sign-in, email confirmation, and role-based route access.
+- Artist business profile, primary service, weekly hours, travel area, and booking policy setup.
+- Published booking page with server-side price, schedule, and overlap validation.
+- 24-hour booking requests and a 15-minute deposit reservation after artist approval.
+- Test-only deposit outcomes, client booking list, and cancellation or reschedule review.
+- Row-level security for booking, payment, notification, and request records.
 
-The booking and dashboard examples are still prototype data. Booking submissions, availability locking, payment reservations, and notifications are the next phase after connecting and applying the Supabase project setup.
+Availability is checked in the database when a booking request is submitted. The artist schedule is shown in its configured time zone (Africa/Lagos by default).
+
