@@ -4,7 +4,7 @@ do $$ begin
   create type public.booking_status as enum (
     'PENDING_APPROVAL', 'REQUEST_EXPIRED', 'DECLINED', 'AWAITING_PAYMENT',
     'PAYMENT_EXPIRED', 'CONFIRMED', 'CANCELLATION_REQUESTED', 'CANCELLED',
-    'RESCHEDULE_REQUESTED'Error: Failed to run sql query: ERROR: 42P17: generation expression is not immutable
+    'RESCHEDULE_REQUESTED'
   );
 exception when duplicate_object then null; end $$;
 
