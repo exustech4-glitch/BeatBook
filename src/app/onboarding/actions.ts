@@ -26,6 +26,7 @@ export async function saveArtistProfile(_previous: OnboardingState, formData: Fo
   if (businessName.length < 2) return { error: "Add a studio or professional name." };
   if (!slug || slug.length > 50) return { error: "Choose a short, valid booking link." };
   if (!/^\S+@\S+\.\S+$/.test(contactEmail)) return { error: "Add a valid contact email." };
+  if (description.length < 20) return { error: "Add a short studio introduction (at least 20 characters) before continuing." };
   if (description.length > 500) return { error: "Keep your introduction under 500 characters." };
   if (!location) return { error: "Add your business location." };
   if (!["Africa/Lagos", "Africa/Accra", "Europe/London", "America/New_York"].includes(timezone)) return { error: "Choose a supported time zone." };

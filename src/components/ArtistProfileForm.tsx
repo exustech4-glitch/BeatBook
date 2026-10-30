@@ -11,7 +11,7 @@ export default function ArtistProfileForm({ initial, email }: { initial: Initial
     <div className="studio-form-grid">
       <label className="field-label">STUDIO OR PROFESSIONAL NAME<input name="business_name" defaultValue={initial?.business_name || ""} placeholder="e.g. Studio Sola" required minLength={2} /></label>
       <label className="field-label">BOOKING PAGE LINK<div className="slug-field"><span>beatbook.app/</span><input name="booking_slug" defaultValue={initial?.booking_slug || ""} placeholder="your-studio" required /></div><small>Use lowercase letters, numbers, and hyphens.</small></label>
-      <label className="field-label studio-wide">YOUR INTRODUCTION<textarea name="description" defaultValue={initial?.description || ""} placeholder="Tell clients a little about your style and what makes your studio special." maxLength={500} rows={4} /></label>
+      <label className="field-label studio-wide">YOUR INTRODUCTION<textarea name="description" defaultValue={initial?.description || ""} placeholder="Tell clients a little about your style and what makes your studio special." minLength={20} maxLength={500} rows={4} required /><small>Required to publish · 20–500 characters.</small></label>
       <label className="field-label">CONTACT EMAIL<input type="email" name="contact_email" defaultValue={initial?.contact_email || email} required /></label>
       <label className="field-label">PHONE NUMBER <span className="optional-label">OPTIONAL</span><input name="phone" type="tel" defaultValue={initial?.phone || ""} placeholder="+234 800 000 0000" /></label>
       <label className="field-label">BUSINESS LOCATION<input name="business_location" defaultValue={initial?.business_location || "Lagos, Nigeria"} required /></label>
@@ -22,3 +22,4 @@ export default function ArtistProfileForm({ initial, email }: { initial: Initial
     <div className="studio-form-actions"><span>Changes save to your private studio profile.</span><button className="button primary" disabled={pending}>{pending ? "Saving…" : "Save and continue"}<span>→</span></button></div>
   </form>;
 }
+

@@ -1,5 +1,6 @@
 "use server";
 
+import { revalidatePath } from "next/cache";
 import { getCurrentProfile } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
 
@@ -61,7 +62,19 @@ export async function publishArtistProfile(): Promise<StudioSetupState> {
   if (!profile || profile.role !== "ARTIST") return { error: "Artist access is required." };
   const supabase = await createClient();
   const { error } = await supabase.rpc("publish_artist_profile");
-  if (error) return { error: error.message || "Finish all required setup steps before publishing." };
+  if (error) {
+    const message = error.message || "Finish all required setup steps before publishing.";
+    if (message.includes("schema cache") || message.includes("publish_artist_profile") && message.includes("Could not find")) {
+      return { error: "The booking lifecycle migration is not installed yet. Apply the updated 20261030000200_booking_lifecycle.sql migration in Supabase, then try again." };
+    }
+    if (message.includes("Complete your business profile first")) return { error: "Add a studio introduction, then save your business profile before publishing." };
+    if (message.includes("Add at least one active service")) return { error: "Save at least one active service before publishing." };
+    if (message.includes("Set your weekly working hours")) return { error: "Choose at least one working day and save your studio setup before publishing." };
+    if (message.includes("Add at least one travel area")) return { error: "Add and save a travel area before publishing." };
+    if (message.includes("Set your deposit and cancellation policy")) return { error: "Save your deposit and cancellation policy before publishing." };
+    return { error: message };
+  }
+  revalidatePath("/onboarding");
   return { success: "Your booking page is live. You can share your booking link with clients." };
 }
 

@@ -30,7 +30,7 @@ export default function StudioSetupForm({ published, slug }: { published: boolea
     </form>
     <form action={publishAction} className="publish-row">
       {publishState.error && <p className="auth-error" role="alert">{publishState.error}</p>}{publishState.success && <p className="auth-success" role="status">{publishState.success} <a href={`/book/${slug}`}>View booking page ↗</a></p>}
-      {published ? <div className="published-state"><span>✓</span> Your booking page is published <a href={`/book/${slug}`}>Open page ↗</a></div> : <><p>Publishing makes your booking page visible to clients.</p><button className="button primary" disabled={publishing}>{publishing ? "Publishing…" : "Review and publish"}<span>↗</span></button></>}
+      {published ? <div className="published-state"><span>✓</span> Your booking page is published <a href={`/book/${slug}`}>Open page ↗</a></div> : <><p>First save the setup above. Publishing requires an introduction, an active service, working hours, a travel area, and a deposit policy.</p><button className="button primary" disabled={publishing}>{publishing ? "Publishing…" : "Review and publish"}<span>↗</span></button></>}
     </form>
   </section>;
 }
