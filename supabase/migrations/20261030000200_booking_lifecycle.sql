@@ -4,11 +4,13 @@ do $$ begin
   create type public.booking_status as enum (
     'PENDING_APPROVAL', 'REQUEST_EXPIRED', 'DECLINED', 'AWAITING_PAYMENT',
     'PAYMENT_EXPIRED', 'CONFIRMED', 'CANCELLATION_REQUESTED', 'CANCELLED',
-    'RESCHEDULE_REQUESTED'
+    'RESCHEDULE_REQUESTED'Error: Failed to run sql query: ERROR: 42P17: generation expression is not immutable
   );
 exception when duplicate_object then null; end $$;
 
-create type public.payment_status as enum ('PENDING', 'SUCCEEDED', 'FAILED', 'EXPIRED');
+do $$ begin
+  create type public.payment_status as enum ('PENDING', 'SUCCEEDED', 'FAILED', 'EXPIRED');
+exception when duplicate_object then null; end $$;
 
 alter table public.artist_profiles
   add column if not exists buffer_minutes integer not null default 15 check (buffer_minutes between 0 and 240);
@@ -22,9 +24,7 @@ create table public.bookings (
   appointment_start timestamptz not null,
   appointment_end timestamptz not null,
   buffer_minutes_snapshot integer not null default 0 check (buffer_minutes_snapshot between 0 and 240),
-  slot_range tstzrange generated always as (
-    tstzrange(appointment_start, appointment_end + make_interval(mins => buffer_minutes_snapshot), '[)')
-  ) stored,
+  slot_range tstzrange not null,
   timezone_snapshot text not null,
   full_address text not null,
   service_name_snapshot text not null,
@@ -49,6 +49,20 @@ create table public.bookings (
   constraint booking_no_active_overlap exclude using gist (artist_id with =, slot_range with &&)
     where (status in ('AWAITING_PAYMENT', 'CONFIRMED', 'CANCELLATION_REQUESTED', 'RESCHEDULE_REQUESTED'))
 );
+create or replace function public.set_booking_slot_range()
+returns trigger language plpgsql set search_path = '' as $$
+begin
+  new.slot_range := tstzrange(
+    new.appointment_start,
+    new.appointment_end + make_interval(mins => new.buffer_minutes_snapshot),
+    '[)'
+  );
+  return new;
+end;
+$$;
+create trigger bookings_set_slot_range
+before insert or update of appointment_start, appointment_end, buffer_minutes_snapshot
+on public.bookings for each row execute function public.set_booking_slot_range();
 create index bookings_client_recent_idx on public.bookings (client_id, created_at desc);
 create index bookings_artist_schedule_idx on public.bookings (artist_id, appointment_start);
 create index bookings_request_expiry_idx on public.bookings (request_expires_at) where status = 'PENDING_APPROVAL';
