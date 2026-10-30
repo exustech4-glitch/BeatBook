@@ -1,7 +1,8 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useEffect, useRef, useState, useTransition } from "react";
 import Link from "next/link";
+import { gsap } from "gsap";
 import { createBookingRequest, decideBooking, decideCancellation, decideReschedule } from "@/app/book/actions";
 
 type Status = "Pending approval" | "Confirmed" | "Awaiting payment" | "Declined" | "Request expired" | "Payment expired" | "Cancellation requested" | "Reschedule requested" | "Cancelled";
@@ -16,6 +17,12 @@ const demoServices = [
   { id: "demo-party", name: "Party makeup", description: "A little extra for your next big night.", duration_minutes: 90, price_ngn: 60000, tag: "", icon: "✺" },
   { id: "demo-engagement", name: "Engagement makeup", description: "Soft glam for the start of forever.", duration_minutes: 120, price_ngn: 65000, tag: "", icon: "♡" },
 ];
+const heroPhoto = "https://images.unsplash.com/photo-1758613653823-5baa7dd8073e?auto=format&fit=crop&w=1400&q=85";
+const servicePhotos = [
+  "https://images.unsplash.com/photo-1699207012725-72af224cca65?auto=format&fit=crop&w=700&q=80",
+  "https://images.unsplash.com/photo-1758739011301-0d348a60d32e?auto=format&fit=crop&w=700&q=80",
+  "https://images.unsplash.com/photo-1791338745960-5d09913ccb8e?auto=format&fit=crop&w=700&q=80",
+];
 const demoAreas = [{ id: "demo-ikoyi", name: "Ikoyi", fee_ngn: 5000 }, { id: "demo-lekki", name: "Lekki Phase 1", fee_ngn: 7500 }, { id: "demo-vi", name: "Victoria Island", fee_ngn: 6000 }];
 const navItems = ["Overview", "Bookings", "Calendar", "Services", "Travel areas", "Deposits & policies", "Settings"];
 function durationLabel(minutes: number) { return minutes % 60 === 0 ? `${minutes / 60} hr${minutes === 60 ? "" : "s"}` : `${Math.floor(minutes / 60)} hr ${minutes % 60} min`; }
@@ -28,7 +35,7 @@ type WeekHour = { weekday: number; opening_time: string; closing_time: string; i
 export default function BeatBook({ initialView = "dashboard", allowSwitch = true, artist, publicServices, travelAreas, workingHours, depositPercent = 25, cancellationTerms, initialBookings }: {
   initialView?: "dashboard" | "book";
   allowSwitch?: boolean;
-  artist?: { id: string; business_name: string; booking_slug: string; business_location: string; timezone: string; contact_email: string };
+  artist?: { id: string; business_name: string; booking_slug: string; business_location: string; timezone: string; contact_email: string; profile_image_url?: string | null };
   publicServices?: PublicService[];
   travelAreas?: PublicArea[];
   workingHours?: WeekHour[];
@@ -51,6 +58,7 @@ export default function BeatBook({ initialView = "dashboard", allowSwitch = true
   const [modal, setModal] = useState(false);
   const [bookingError, setBookingError] = useState("");
   const [bookingPending, startBooking] = useTransition();
+  const bookingMotionRoot = useRef<HTMLDivElement>(null);
   const chosen = serviceOptions[selected] || serviceOptions[0];
   const chosenArea = areaOptions.find((item) => item.id === area) || areaOptions[0];
   const travelFee = chosenArea?.fee_ngn || 0;
@@ -76,6 +84,17 @@ export default function BeatBook({ initialView = "dashboard", allowSwitch = true
     const last = closeHour * 60 + closeMinute - selectedDuration;
     return Array.from({ length: Math.max(0, Math.floor((last - first) / 30) + 1) }, (_, i) => first + i * 30).map((minutes) => `${String(Math.floor(minutes / 60)).padStart(2, "0")}:${String(minutes % 60).padStart(2, "0")}`);
   })() : workingHours ? [] : ["10:00", "13:00", "16:00"];
+
+  useEffect(() => {
+    if (view !== "book" || !bookingMotionRoot.current || window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+    const context = gsap.context(() => {
+      const intro = gsap.timeline({ defaults: { ease: "power3.out" } });
+      intro.from(".booking-intro-copy > *", { opacity: 0, y: 18, duration: 0.65, stagger: 0.1 })
+        .from(".booking-hero-image", { opacity: 0, scale: 0.97, duration: 0.8 }, "<0.08")
+        .from(".artist-card, .booking-section, .policy-note, .summary-card", { opacity: 0, y: 16, duration: 0.5, stagger: 0.07 }, "-=0.25");
+    }, bookingMotionRoot);
+    return () => context.revert();
+  }, [view, artist?.id]);
 
   function decide(id: number | string, approve: boolean) {
     if (typeof id === "string" && !id.startsWith("demo-")) {
@@ -168,13 +187,13 @@ export default function BeatBook({ initialView = "dashboard", allowSwitch = true
         </div>
         <footer className="footer"><span>© 2025 BeatBook</span><span>Made for artists, with love <b>♥</b></span><span>Help&nbsp;&nbsp; · &nbsp;&nbsp;Privacy&nbsp;&nbsp; · &nbsp;&nbsp;Terms</span></footer>
       </section>
-    </div> : <div className="booking-page">
+    </div> : <div className="booking-page" ref={bookingMotionRoot}>
       <header className="booking-header"><button className="back-link" onClick={() => allowSwitch ? setView("dashboard") : (window.location.href = "/")}>← <span>{allowSwitch ? "Back to dashboard" : "Back to BeatBook"}</span></button><div className="client-brand"><span className="brand-mark">b.</span> beatbook</div><span className="secure-label">✦ &nbsp;A BEAUTY APPOINTMENT, MADE EASY</span></header>
-      <div className="booking-intro"><span className="eyebrow">MEET YOUR ARTIST</span><h1>Make room for a little <em>magic.</em></h1><p>Book your next beautiful moment with Studio Sola.</p></div>
+      <div className="booking-intro"><div className="booking-intro-copy"><span className="eyebrow">MEET YOUR ARTIST</span><h1>Make room for a little <em>magic.</em></h1><p>Book your next beautiful moment with {artist?.business_name || "your artist"}.</p></div><div className="booking-hero-image" role="img" aria-label="A makeup artist getting a client ready for a beauty appointment" style={{ backgroundImage: `url("${artist?.profile_image_url || heroPhoto}")` }}><span>YOUR MOMENT, YOUR WAY</span></div></div>
       {notice && <div className="notice booking-notice"><span>✓</span>{notice}<button onClick={() => setNotice("")} aria-label="Dismiss">×</button></div>}
       <div className="booking-layout"><div className="booking-main">
         <section className="booking-section artist-card"><div className="artist-portrait">{artist?.business_name?.[0] || "S"}<span className="portrait-flower">✿</span></div><div><span className="verified-label">✦ VERIFIED ARTIST</span><h2>{artist?.business_name || "Studio Sola"}</h2><p>Makeup artist · {artist?.business_location || "Lagos, Nigeria"}</p><div className="artist-rating">★★★★★ <span>4.9 <i>(38 reviews)</i></span></div></div><button className="share-button" aria-label="Share artist">↗</button></section>
-        <section className="booking-section"><div className="booking-step"><span>01</span><div><h2>Choose your service</h2><p>Find the look that feels like you.</p></div></div><div className="service-grid">{serviceOptions.map((service, i) => <button className={`service-card ${selected === i ? "selected" : ""}`} key={service.id} onClick={() => { setSelected(i); setTime(""); }}><div className={`service-art art-${i % 3}`}><span>{service.icon}</span>{service.tag && <i>{service.tag}</i>}</div><div className="service-copy"><h3>{service.name}</h3><p>{service.description}</p><div className="service-meta"><strong>₦{service.price_ngn.toLocaleString()}</strong><span>◷ {durationLabel(service.duration_minutes)}</span></div></div>{selected === i && <span className="selected-check">✓</span>}</button>)}</div></section>
+        <section className="booking-section"><div className="booking-step"><span>01</span><div><h2>Choose your service</h2><p>Find the look that feels like you.</p></div></div><div className="service-grid">{serviceOptions.map((service, i) => <button className={`service-card ${selected === i ? "selected" : ""}`} key={service.id} onClick={() => { setSelected(i); setTime(""); }}><div className={`service-art art-${i % 3}`} style={{ backgroundImage: `linear-gradient(180deg, #25162212, #25162266), url("${servicePhotos[i % servicePhotos.length]}")` }}><span>{service.icon}</span>{service.tag && <i>{service.tag}</i>}</div><div className="service-copy"><h3>{service.name}</h3><p>{service.description}</p><div className="service-meta"><strong>₦{service.price_ngn.toLocaleString()}</strong><span>◷ {durationLabel(service.duration_minutes)}</span></div></div>{selected === i && <span className="selected-check">✓</span>}</button>)}</div></section>
         <section className="booking-section"><div className="booking-step"><span>02</span><div><h2>Pick a date & time</h2><p>Choose a moment that works for you.</p></div></div><div className="date-panel"><div className="date-month"><button aria-label="Previous month" onClick={() => setMonthAnchor(new Date(calendarYear, calendarMonth - 1, 1))}>‹</button><strong>{monthLabel}</strong><button aria-label="Next month" onClick={() => setMonthAnchor(new Date(calendarYear, calendarMonth + 1, 1))}>›</button></div><div className="date-grid"><span>M</span><span>T</span><span>W</span><span>T</span><span>F</span><span>S</span><span>S</span>{monthDays.map((d, i) => { const dateString = d ? `${calendarYear}-${String(calendarMonth + 1).padStart(2, "0")}-${String(d).padStart(2, "0")}` : ""; return <button key={i} disabled={!d || dateString < todayLocal} className={`${dateString === selectedDate ? "chosen-day" : ""} ${dateString === todayLocal ? "today-date" : ""}`} onClick={() => { if (dateString) { setSelectedDate(dateString); setTime(""); } }}>{d}</button>; })}</div><div className="time-label">AVAILABLE TIMES <span>{artist?.timezone || "Africa/Lagos"}</span></div><div className="time-options">{availableTimes.map((t) => <button className={time === t ? "time-selected" : ""} key={t} onClick={() => setTime(t)}>{displayTime(t)}</button>)}{availableTimes.length === 0 && <span className="no-times">No times available for this date.</span>}</div></div></section>
         <section className="booking-section"><div className="booking-step"><span>03</span><div><h2>Where should we meet?</h2><p>Your details help us make the day seamless.</p></div></div><label className="field-label">APPOINTMENT ADDRESS<input value={address} onChange={(e) => setAddress(e.target.value)} placeholder="Street address, building, or landmark" /></label><label className="field-label">YOUR AREA<select value={area} onChange={(e) => setArea(e.target.value)}>{areaOptions.map((option) => <option key={option.id} value={option.id}>{option.name} · ₦{option.fee_ngn.toLocaleString()}</option>)}</select><small>Travel fees vary by area. No hidden charges.</small></label></section>
         <div className="policy-note"><span>♡</span><p><strong>A note from {artist?.business_name || "Studio Sola"}</strong><br/>{depositPercent}% deposit secures your appointment after the artist approves your request. {cancellationTerms || "Cancellations are accepted up to 48 hours before your booking."}</p></div>
