@@ -9,13 +9,22 @@ npm install
 npm run dev
 ```
 
-Open `http://localhost:3000`.
+Open `http://localhost:3000`. The root route opens the public booking page. Artist dashboard access requires an authenticated artist account.
 
-## Current slice
+## Connect Supabase
 
-- Artist dashboard with overview metrics, booking request review, approve/decline actions, upcoming appointments, and a calendar preview.
-- Client booking flow with service selection, date/time selection, travel area pricing, deposit and balance breakdown, address validation, and request confirmation.
-- Responsive styling based on the BeatBook style guide and wireframes.
-- All payments are described as test-only. No payment is taken.
+1. Create a Supabase project and copy `.env.example` to `.env.local`.
+2. Set `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY`, and `NEXT_PUBLIC_SITE_URL` from your project.
+3. Apply `supabase/migrations/20261030000100_beatbook_foundation.sql` in the Supabase SQL Editor, or link the Supabase CLI and run `supabase db push`.
+4. In Supabase Auth, keep email confirmation enabled and add `http://localhost:3000/auth/callback` to the allowed redirect URLs. Add the production callback URL when deploying.
+5. Restart the Next.js server after changing environment variables.
 
-The current app is a UI workflow prototype. Its example bookings and services are in memory and reset on refresh. It does not yet implement accounts, email verification, database persistence, server-side availability locking, email notifications, or reservation expiry. Those are required before this can be used as a live booking service; the current screens do not claim otherwise.
+## Phase 2
+
+- Cookie based Supabase sign-up, sign-in, email confirmation callback, and sign-out.
+- Artist and client roles are created by the database trigger. A user cannot change their own role through the profile table.
+- The artist dashboard and onboarding routes require an authenticated artist account.
+- Artist profile setup saves a business profile to Supabase and supports resuming from saved data.
+- The database migration adds artist services, weekly working hours, travel areas, blocked dates, and versioned policies with row level security.
+
+The booking and dashboard examples are still prototype data. Booking submissions, availability locking, payment reservations, and notifications are the next phase after connecting and applying the Supabase project setup.

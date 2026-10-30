@@ -16,8 +16,8 @@ const services = [
 ];
 const navItems = ["Overview", "Bookings", "Calendar", "Services", "Travel areas", "Deposits & policies", "Settings"];
 
-export default function BeatBook() {
-  const [view, setView] = useState<"dashboard" | "book">("dashboard");
+export default function BeatBook({ initialView = "dashboard", allowSwitch = true }: { initialView?: "dashboard" | "book"; allowSwitch?: boolean }) {
+  const [view, setView] = useState<"dashboard" | "book">(initialView);
   const [activeNav, setActiveNav] = useState("Overview");
   const [bookings, setBookings] = useState(initialBookings);
   const [selected, setSelected] = useState(0);
@@ -55,7 +55,7 @@ export default function BeatBook() {
     <header className="topbar">
       <button className="brand" onClick={() => setView("dashboard")} aria-label="BeatBook home"><span className="brand-mark">b.</span><span>beatbook</span></button>
       <div className="top-center"><span className="live-dot"/> Your beauty, beautifully booked</div>
-      <div className="top-actions"><button className="view-switch" onClick={() => { setView(view === "dashboard" ? "book" : "dashboard"); setNotice(""); }}><span>◉</span> {view === "dashboard" ? "Client preview" : "Artist dashboard"} <span>↗</span></button><button className="avatar" aria-label="Account menu">S</button></div>
+      <div className="top-actions">{allowSwitch && <button className="view-switch" onClick={() => { setView(view === "dashboard" ? "book" : "dashboard"); setNotice(""); }}><span>◉</span> {view === "dashboard" ? "Client preview" : "Artist dashboard"} <span>↗</span></button>}<button className="avatar" aria-label="Account menu">S</button></div>
     </header>
 
     {view === "dashboard" ? <div className="dashboard-layout">
@@ -96,7 +96,7 @@ export default function BeatBook() {
         <footer className="footer"><span>© 2025 BeatBook</span><span>Made for artists, with love <b>♥</b></span><span>Help&nbsp;&nbsp; · &nbsp;&nbsp;Privacy&nbsp;&nbsp; · &nbsp;&nbsp;Terms</span></footer>
       </section>
     </div> : <div className="booking-page">
-      <header className="booking-header"><button className="back-link" onClick={() => setView("dashboard")}>← <span>Back to dashboard</span></button><div className="client-brand"><span className="brand-mark">b.</span> beatbook</div><span className="secure-label">✦ &nbsp;A BEAUTY APPOINTMENT, MADE EASY</span></header>
+      <header className="booking-header"><button className="back-link" onClick={() => allowSwitch ? setView("dashboard") : (window.location.href = "/")}>← <span>{allowSwitch ? "Back to dashboard" : "Back to BeatBook"}</span></button><div className="client-brand"><span className="brand-mark">b.</span> beatbook</div><span className="secure-label">✦ &nbsp;A BEAUTY APPOINTMENT, MADE EASY</span></header>
       <div className="booking-intro"><span className="eyebrow">MEET YOUR ARTIST</span><h1>Make room for a little <em>magic.</em></h1><p>Book your next beautiful moment with Studio Sola.</p></div>
       {notice && <div className="notice booking-notice"><span>✓</span>{notice}<button onClick={() => setNotice("")} aria-label="Dismiss">×</button></div>}
       <div className="booking-layout"><div className="booking-main">

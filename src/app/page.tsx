@@ -1,5 +1,5 @@
-import BeatBook from "@/components/BeatBook";
+import { redirect } from "next/navigation";
 
 export default function Home() {
-  return <BeatBook />;
+  redirect("/book");
 }
