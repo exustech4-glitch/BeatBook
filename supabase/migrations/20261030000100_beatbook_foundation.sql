@@ -159,10 +159,7 @@ revoke all on public.profiles, public.artist_profiles, public.services, public.w
 grant select on public.profiles to authenticated;
 grant update (display_name) on public.profiles to authenticated;
 grant select, delete on public.artist_profiles to authenticated;
-grant insert (user_id, business_name, booking_slug, profile_image_url, description, contact_email, phone, business_location, timezone)
-  on public.artist_profiles to authenticated;
-grant update (business_name, booking_slug, profile_image_url, description, contact_email, phone, business_location, timezone)
-  on public.artist_profiles to authenticated;
+grant insert, update on public.artist_profiles to authenticated;
 grant select, insert, update, delete on public.services, public.working_hours,
   public.travel_areas, public.availability_exceptions, public.policy_versions to authenticated;
 grant select on public.artist_profiles, public.services, public.working_hours,
@@ -248,4 +245,5 @@ create trigger working_hours_set_updated_at before update on public.working_hour
   for each row execute procedure public.set_updated_at();
 create trigger travel_areas_set_updated_at before update on public.travel_areas
   for each row execute procedure public.set_updated_at();
+
 
