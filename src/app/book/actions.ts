@@ -5,6 +5,11 @@ import { createClient } from "@/lib/supabase/server";
 
 export type BookingActionState = { error?: string; success?: string; bookingId?: string };
 
+export async function getBookingAccountRole(): Promise<"CLIENT" | "ARTIST" | "GUEST"> {
+  const profile = await getCurrentProfile();
+  return profile?.role || "GUEST";
+}
+
 export async function createBookingRequest(_previous: BookingActionState, formData: FormData): Promise<BookingActionState> {
   const profile = await getCurrentProfile();
   if (!profile) return { error: "Sign in or create a client account before sending a request." };
