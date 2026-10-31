@@ -159,11 +159,11 @@ export default function BeatBook({ initialView = "dashboard", allowSwitch = true
   }
 
   return <main className="app-shell">
-    <header className="topbar">
+    {view === "dashboard" && <header className="topbar">
       <button className="brand" onClick={() => setView("dashboard")} aria-label="BeatBook home"><span className="brand-mark">b.</span><span>beatbook</span></button>
       <div className="top-center"><span className="live-dot"/> Your beauty, beautifully booked</div>
       <div className="top-actions">{allowSwitch && <button className="view-switch" onClick={() => { setView(view === "dashboard" ? "book" : "dashboard"); setNotice(""); }}><span>◉</span> {view === "dashboard" ? "Client preview" : "Artist dashboard"} <span>↗</span></button>}<button className="avatar" aria-label="Open settings" title="Open settings" onClick={() => { setView("dashboard"); setActiveNav("Settings"); }}>S</button></div>
-    </header>
+    </header>}
 
     {view === "dashboard" ? <div className="dashboard-layout">
       <aside className="sidebar">
