@@ -15,7 +15,7 @@ exception when duplicate_object then null; end $$;
 alter table public.artist_profiles
   add column if not exists buffer_minutes integer not null default 15 check (buffer_minutes between 0 and 240);
 
-create table public.bookings (
+create table if not exists public.bookings (
   id uuid primary key default gen_random_uuid(),
   client_id uuid not null references public.profiles(id),
   artist_id uuid not null references public.artist_profiles(user_id),
@@ -60,15 +60,16 @@ begin
   return new;
 end;
 $$;
+drop trigger if exists bookings_set_slot_range on public.bookings;
 create trigger bookings_set_slot_range
 before insert or update of appointment_start, appointment_end, buffer_minutes_snapshot
 on public.bookings for each row execute function public.set_booking_slot_range();
-create index bookings_client_recent_idx on public.bookings (client_id, created_at desc);
-create index bookings_artist_schedule_idx on public.bookings (artist_id, appointment_start);
-create index bookings_request_expiry_idx on public.bookings (request_expires_at) where status = 'PENDING_APPROVAL';
-create index bookings_reservation_expiry_idx on public.bookings (reservation_expires_at) where status = 'AWAITING_PAYMENT';
+create index if not exists bookings_client_recent_idx on public.bookings (client_id, created_at desc);
+create index if not exists bookings_artist_schedule_idx on public.bookings (artist_id, appointment_start);
+create index if not exists bookings_request_expiry_idx on public.bookings (request_expires_at) where status = 'PENDING_APPROVAL';
+create index if not exists bookings_reservation_expiry_idx on public.bookings (reservation_expires_at) where status = 'AWAITING_PAYMENT';
 
-create table public.payment_records (
+create table if not exists public.payment_records (
   id uuid primary key default gen_random_uuid(),
   booking_id uuid not null references public.bookings(id) on delete cascade,
   client_id uuid not null references public.profiles(id),
@@ -81,7 +82,7 @@ create table public.payment_records (
   created_at timestamptz not null default now()
 );
 
-create table public.notifications (
+create table if not exists public.notifications (
   id uuid primary key default gen_random_uuid(),
   recipient_id uuid not null references public.profiles(id) on delete cascade,
   booking_id uuid references public.bookings(id) on delete cascade,
@@ -91,9 +92,9 @@ create table public.notifications (
   read_at timestamptz,
   created_at timestamptz not null default now()
 );
-create index notifications_recipient_unread_idx on public.notifications (recipient_id, created_at desc) where read_at is null;
+create index if not exists notifications_recipient_unread_idx on public.notifications (recipient_id, created_at desc) where read_at is null;
 
-create table public.cancellation_requests (
+create table if not exists public.cancellation_requests (
   id uuid primary key default gen_random_uuid(),
   booking_id uuid not null references public.bookings(id) on delete cascade,
   client_id uuid not null references public.profiles(id),
@@ -103,7 +104,7 @@ create table public.cancellation_requests (
   decided_at timestamptz
 );
 
-create table public.reschedule_requests (
+create table if not exists public.reschedule_requests (
   id uuid primary key default gen_random_uuid(),
   booking_id uuid not null references public.bookings(id) on delete cascade,
   client_id uuid not null references public.profiles(id),
@@ -417,22 +418,29 @@ grant select on public.bookings, public.payment_records, public.notifications to
 grant select on public.cancellation_requests, public.reschedule_requests to authenticated;
 grant update (read_at) on public.notifications to authenticated;
 
+drop policy if exists "booking_parties_read" on public.bookings;
 create policy "booking_parties_read" on public.bookings for select to authenticated
   using (client_id = (select auth.uid()) or artist_id = (select auth.uid()));
+drop policy if exists "booking_party_profile_read" on public.profiles;
 create policy "booking_party_profile_read" on public.profiles for select to authenticated
   using (
     id = (select auth.uid())
     or exists (select 1 from public.bookings b where b.client_id = id and b.artist_id = (select auth.uid()))
     or exists (select 1 from public.bookings b where b.artist_id = id and b.client_id = (select auth.uid()))
   );
+drop policy if exists "payment_client_read" on public.payment_records;
 create policy "payment_client_read" on public.payment_records for select to authenticated
   using (client_id = (select auth.uid()));
+drop policy if exists "notification_owner_read" on public.notifications;
 create policy "notification_owner_read" on public.notifications for select to authenticated
   using (recipient_id = (select auth.uid()));
+drop policy if exists "notification_owner_update" on public.notifications;
 create policy "notification_owner_update" on public.notifications for update to authenticated
   using (recipient_id = (select auth.uid())) with check (recipient_id = (select auth.uid()));
+drop policy if exists "cancellation_parties_read" on public.cancellation_requests;
 create policy "cancellation_parties_read" on public.cancellation_requests for select to authenticated
   using (client_id = (select auth.uid()) or exists (select 1 from public.bookings b where b.id = booking_id and b.artist_id = (select auth.uid())));
+drop policy if exists "reschedule_parties_read" on public.reschedule_requests;
 create policy "reschedule_parties_read" on public.reschedule_requests for select to authenticated
   using (client_id = (select auth.uid()) or exists (select 1 from public.bookings b where b.id = booking_id and b.artist_id = (select auth.uid())));
 
