@@ -34,7 +34,7 @@ function dateKeyInZone(date: Date, timezone: string) {
 function dateKeyForDay(year: number, month: number, day: number) {
   return `${year}-${String(month + 1).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
 }
-function formatDateKey(key: string, _timezone: string) {
+function formatDateKey(key: string) {
   const [year, month, day] = key.split("-").map(Number);
   return new Intl.DateTimeFormat("en", { weekday: "long", month: "long", day: "numeric", year: "numeric", timeZone: "UTC" }).format(new Date(Date.UTC(year, month - 1, day, 12)));
 }
@@ -81,7 +81,7 @@ export default function DashboardWorkspace({
     return <section className="workspace-panel">
       <div className="workspace-panel-head"><div><span className="eyebrow">YOUR STUDIO</span><h2>Calendar</h2><p>{content.intro}</p></div></div>
       <div className="workspace-calendar-layout"><div className="workspace-calendar card"><div className="date-month"><button aria-label="Previous month" onClick={() => setMonthAnchor(new Date(year, month - 1, 1))}>‹</button><strong>{new Intl.DateTimeFormat("en", { month: "long", year: "numeric" }).format(monthAnchor)}</strong><button aria-label="Next month" onClick={() => setMonthAnchor(new Date(year, month + 1, 1))}>›</button></div><div className="workspace-calendar-grid">{["M", "T", "W", "T", "F", "S", "S"].map((day, i) => <span className="weekday" key={`${day}-${i}`}>{day}</span>)}{days.map((day, i) => { const key = day ? dateKeyForDay(year, month, day) : ""; const hasBooking = bookings.some((booking) => booking.dateKey === key); return <button key={i} disabled={!day} className={`calendar-day ${key === selectedDate ? "workspace-selected-day" : ""} ${hasBooking ? "has-event" : ""}`} onClick={() => day && setSelectedDate(key)}>{day}<i/></button>; })}</div></div>
-        <div className="workspace-day-list"><span className="eyebrow">SELECTED DAY</span><h3>{formatDateKey(selectedDate, timezone)}</h3>{selectedBookings.length ? selectedBookings.map((booking) => <article className="workspace-day-booking" key={booking.id}><span className="workspace-day-time">{booking.time}</span><div><strong>{booking.client}</strong><small>{booking.service} · {booking.area}</small></div><span className={`status ${booking.status === "Confirmed" ? "green-status" : "amber-status"}`}>{booking.status}</span></article>) : <div className="workspace-empty compact"><span>▦</span><p>{content.empty}</p></div>}</div>
+        <div className="workspace-day-list"><span className="eyebrow">SELECTED DAY</span><h3>{formatDateKey(selectedDate)}</h3>{selectedBookings.length ? selectedBookings.map((booking) => <article className="workspace-day-booking" key={booking.id}><span className="workspace-day-time">{booking.time}</span><div><strong>{booking.client}</strong><small>{booking.service} · {booking.area}</small></div><span className={`status ${booking.status === "Confirmed" ? "green-status" : "amber-status"}`}>{booking.status}</span></article>) : <div className="workspace-empty compact"><span>▦</span><p>{content.empty}</p></div>}</div>
       </div>
     </section>;
   }
