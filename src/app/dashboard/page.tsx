@@ -20,6 +20,7 @@ export default async function DashboardPage() {
     const instant = new Date(booking.appointment_start);
     const date = new Intl.DateTimeFormat("en", { month: "short", day: "2-digit", year: "numeric", timeZone: booking.timezone_snapshot }).format(instant);
     const time = new Intl.DateTimeFormat("en", { hour: "numeric", minute: "2-digit", timeZone: booking.timezone_snapshot }).format(instant);
+    const timeKey = new Intl.DateTimeFormat("en-GB", { hour: "2-digit", minute: "2-digit", hourCycle: "h23", timeZone: booking.timezone_snapshot }).format(instant);
     const parts = new Intl.DateTimeFormat("en", { timeZone: booking.timezone_snapshot, year: "numeric", month: "2-digit", day: "2-digit" }).formatToParts(instant);
     const getPart = (type: string) => parts.find((part) => part.type === type)?.value || "";
     const dateKey = `${getPart("year")}-${getPart("month")}-${getPart("day")}`;
@@ -28,7 +29,7 @@ export default async function DashboardPage() {
       DECLINED: "Declined", REQUEST_EXPIRED: "Request expired", PAYMENT_EXPIRED: "Payment expired",
       CANCELLATION_REQUESTED: "Cancellation requested", RESCHEDULE_REQUESTED: "Reschedule requested", CANCELLED: "Cancelled",
     } as Record<string, "Pending approval" | "Awaiting payment" | "Confirmed" | "Declined" | "Request expired" | "Payment expired" | "Cancellation requested" | "Reschedule requested" | "Cancelled">)[booking.status] || "Request expired";
-    return { id: booking.id, client: client?.display_name || "Client", service: booking.service_name_snapshot, date, dateKey, time, area: booking.travel_area_name_snapshot, status, amount: booking.total_snapshot };
+    return { id: booking.id, client: client?.display_name || "Client", service: booking.service_name_snapshot, date, dateKey, time, timeKey, area: booking.travel_area_name_snapshot, status, amount: booking.total_snapshot };
   });
   const studio = studioResult.data;
   return <BeatBook
