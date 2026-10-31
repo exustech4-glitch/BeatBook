@@ -13,14 +13,15 @@ export async function saveStudioSetup(_previous: StudioSetupState, formData: For
   const serviceDescription = String(formData.get("service_description") || "").trim();
   const price = Number(formData.get("price_ngn"));
   const duration = Number(formData.get("duration_minutes"));
-  const areaName = String(formData.get("area_name") || "").trim();
-  const travelFee = Number(formData.get("travel_fee_ngn"));
+  const areaNames = formData.getAll("area_name").map((value) => String(value).trim());
+  const travelFees = formData.getAll("travel_fee_ngn").map((value) => Number(value));
   const opening = String(formData.get("opening_time") || "09:00");
   const closing = String(formData.get("closing_time") || "17:00");
   const deposit = Number(formData.get("deposit_percent"));
   const cancellation = String(formData.get("cancellation_terms") || "").trim();
   if (serviceName.length < 2 || !Number.isInteger(price) || price < 0 || !Number.isInteger(duration) || duration < 15 || duration > 1440) return { error: "Add a valid service name, price, and duration (15 minutes to 24 hours)." };
-  if (!areaName || !Number.isInteger(travelFee) || travelFee < 0) return { error: "Add a valid travel area and fee." };
+  if (!areaNames.length || areaNames.some((name) => !name || name.length > 100) || travelFees.length !== areaNames.length || travelFees.some((fee) => !Number.isInteger(fee) || fee < 0)) return { error: "Add a valid name and fee for every travel area." };
+  if (new Set(areaNames.map((name) => name.toLocaleLowerCase())).size !== areaNames.length) return { error: "Each travel area must have a unique name." };
   if (opening >= closing) return { error: "Closing time must be later than opening time." };
   if (!Number.isInteger(deposit) || deposit < 0 || deposit > 100) return { error: "Deposit must be between 0% and 100%." };
 
@@ -40,11 +41,19 @@ export async function saveStudioSetup(_previous: StudioSetupState, formData: For
   const { error: hoursError } = await supabase.from("working_hours").upsert(hours, { onConflict: "artist_id,weekday" });
   if (hoursError) return { error: "Couldn’t save your working hours." };
 
-  const { data: existingArea } = await supabase.from("travel_areas").select("id").eq("artist_id", profile.id).eq("name", areaName).maybeSingle();
-  const areaSave = existingArea
-    ? await supabase.from("travel_areas").update({ fee_ngn: travelFee, active: true }).eq("id", existingArea.id)
-    : await supabase.from("travel_areas").insert({ artist_id: profile.id, name: areaName, fee_ngn: travelFee, active: true });
-  if (areaSave.error) return { error: "Couldn’t save the travel area." };
+  const { data: existingAreas, error: existingAreasError } = await supabase.from("travel_areas").select("id,name,active").eq("artist_id", profile.id);
+  if (existingAreasError) return { error: "Couldn’t load your saved travel areas. Refresh and try again." };
+  const areaSave = await supabase.from("travel_areas").upsert(
+    areaNames.map((name, index) => ({ artist_id: profile.id, name, fee_ngn: travelFees[index], active: true })),
+    { onConflict: "artist_id,name" },
+  );
+  if (areaSave.error) return { error: "Couldn’t save the travel areas." };
+  const areaNamesToKeep = new Set(areaNames.map((name) => name.toLocaleLowerCase()));
+  const areaIdsToDeactivate = (existingAreas || []).filter((item) => item.active && !areaNamesToKeep.has(item.name.toLocaleLowerCase())).map((item) => item.id);
+  if (areaIdsToDeactivate.length) {
+    const { error: deactivateError } = await supabase.from("travel_areas").update({ active: false }).eq("artist_id", profile.id).in("id", areaIdsToDeactivate);
+    if (deactivateError) return { error: "Your areas were saved, but a removed area could not be paused. Please save again." };
+  }
 
   const { data: latest } = await supabase.from("policy_versions").select("version").eq("artist_id", profile.id).order("version", { ascending: false }).limit(1).maybeSingle();
   const { error: policyError } = await supabase.from("policy_versions").insert({
@@ -54,7 +63,7 @@ export async function saveStudioSetup(_previous: StudioSetupState, formData: For
     deposit_type: "PERCENTAGE", deposit_value: deposit,
   });
   if (policyError) return { error: "Couldn’t save your deposit and cancellation policy." };
-  return { success: "Services, working hours, travel fees, and policies saved." };
+  return { success: `Service, working hours, ${areaNames.length} travel area${areaNames.length === 1 ? "" : "s"}, and policies saved.` };
 }
 
 export async function publishArtistProfile(): Promise<StudioSetupState> {
