@@ -136,4 +136,5 @@ body{font-size:15px;line-height:1.55}
 @media(prefers-reduced-motion:reduce){.glam-mood-card,.glam-mood-check{transition:none}.glam-recommendation{animation:none}}
 
 .setup-action{text-decoration:none}
+.booking-auth-prompt{margin:13px 0 0;padding:12px 14px;border:1px solid #eadde5;border-radius:8px;background:#faf5f8;color:#625360;font-size:12px;line-height:1.6}.booking-auth-prompt a{color:var(--plum);font-weight:700;text-underline-offset:3px}
 
