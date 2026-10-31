@@ -44,6 +44,7 @@ export async function signUp(_previous: AuthState, formData: FormData): Promise<
   const email = String(formData.get("email") || "").trim().toLowerCase();
   const password = String(formData.get("password") || "");
   const role = String(formData.get("account_role") || "CLIENT");
+  const nextPath = safeNextPath(formData.get("next"));
   if (displayName.length < 2) return { error: "Enter your name so the artist knows who’s booking." };
   if (!/^\S+@\S+\.\S+$/.test(email)) return { error: "Enter a valid email address." };
   if (password.length < 8) return { error: "Choose a password with at least 8 characters." };
@@ -58,7 +59,7 @@ export async function signUp(_previous: AuthState, formData: FormData): Promise<
     password,
     options: {
       data: { display_name: displayName, account_role: role },
-      emailRedirectTo: `${getSiteUrl()}/auth/callback?next=${role === "ARTIST" ? "/onboarding" : "/book"}`,
+      emailRedirectTo: `${getSiteUrl()}/auth/callback?next=${encodeURIComponent(role === "ARTIST" ? "/onboarding" : nextPath)}`,
     },
   });
   if (error) return { error: error.message.includes("already registered") ? "That email already has an account. Try signing in." : "We couldn’t create your account. Check your details and try again." };
@@ -73,3 +74,14 @@ export async function signOut() {
     redirect("/sign-in");
   }
 }
+
+export async function signOutForBooking(formData: FormData) {
+  const nextPath = safeNextPath(formData.get("next"));
+  try {
+    const supabase = await createClient();
+    await supabase.auth.signOut();
+  } finally {
+    redirect(`/sign-in?next=${encodeURIComponent(nextPath)}`);
+  }
+}
+
