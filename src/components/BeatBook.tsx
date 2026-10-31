@@ -7,7 +7,7 @@ import { createBookingRequest, decideBooking, decideCancellation, decideReschedu
 import DashboardWorkspace from "@/components/DashboardWorkspace";
 
 type Status = "Pending approval" | "Confirmed" | "Awaiting payment" | "Declined" | "Request expired" | "Payment expired" | "Cancellation requested" | "Reschedule requested" | "Cancelled";
-type Booking = { id: number | string; client: string; service: string; date: string; dateKey?: string; time: string; area: string; status: Status; amount: number };
+type Booking = { id: number | string; client: string; service: string; date: string; dateKey?: string; time: string; timeKey?: string; area: string; status: Status; amount: number };
 const demoBookings: Booking[] = [
   { id: 1, client: "Amara Okafor", service: "Bridal makeup", date: "May 20, 2025", time: "10:00 AM", area: "Ikoyi", status: "Confirmed", amount: 160 },
   { id: 2, client: "Tomi Adebayo", service: "Party makeup", date: "May 22, 2025", time: "1:00 PM", area: "Lekki Phase 1", status: "Pending approval", amount: 130 },
@@ -39,6 +39,28 @@ type PublicService = (typeof demoServices)[number];
 type PublicArea = (typeof demoAreas)[number];
 type WeekHour = { weekday: number; opening_time: string; closing_time: string; is_closed: boolean };
 
+function dateKeyInZone(date: Date, timezone: string) {
+  const parts = new Intl.DateTimeFormat("en", { timeZone: timezone, year: "numeric", month: "2-digit", day: "2-digit" }).formatToParts(date);
+  const value = (type: string) => parts.find((part) => part.type === type)?.value || "";
+  return `${value("year")}-${value("month")}-${value("day")}`;
+}
+
+function addDaysToKey(key: string, days: number) {
+  const date = new Date(`${key}T12:00:00Z`);
+  date.setUTCDate(date.getUTCDate() + days);
+  return date.toISOString().slice(0, 10);
+}
+
+function nextBookingDate(timezone: string, hours?: WeekHour[]) {
+  const today = dateKeyInZone(new Date(), timezone);
+  for (let offset = 1; offset <= 14; offset += 1) {
+    const key = addDaysToKey(today, offset);
+    const weekday = new Date(`${key}T12:00:00Z`).getUTCDay();
+    if (!hours || hours.some((hour) => hour.weekday === weekday && !hour.is_closed)) return key;
+  }
+  return addDaysToKey(today, 1);
+}
+
 export default function BeatBook({ initialView = "dashboard", allowSwitch = true, artist, publicServices, travelAreas, workingHours, depositPercent = 25, cancellationTerms, initialBookings, studioName, studioLocation, studioTimezone = "Africa/Lagos", bookingSlug = "", contactEmail = "", dashboardServices = [], dashboardAreas = [], dashboardPolicy = null }: {
   initialView?: "dashboard" | "book";
   allowSwitch?: boolean;
@@ -66,8 +88,8 @@ export default function BeatBook({ initialView = "dashboard", allowSwitch = true
   const [selected, setSelected] = useState(0);
   const [selectedMood, setSelectedMood] = useState("");
   const [monthAnchor, setMonthAnchor] = useState(() => new Date());
-  const [selectedDate, setSelectedDate] = useState(() => new Date(Date.now() + 86400000).toISOString().slice(0, 10));
-  const [time, setTime] = useState("10:00");
+  const [selectedDate, setSelectedDate] = useState(() => nextBookingDate(artist?.timezone || studioTimezone, workingHours));
+  const [time, setTime] = useState("");
   const [area, setArea] = useState(areaOptions[0]?.id || "demo-ikoyi");
   const [address, setAddress] = useState("");
   const [notice, setNotice] = useState("");
@@ -83,10 +105,20 @@ export default function BeatBook({ initialView = "dashboard", allowSwitch = true
   const pending = bookings.filter((b) => ["Pending approval", "Cancellation requested", "Reschedule requested"].includes(b.status));
   const todayParts = new Intl.DateTimeFormat("en", { timeZone: studioTimezone, year: "numeric", month: "2-digit", day: "2-digit" }).formatToParts(new Date());
   const todayKey = `${todayParts.find((part) => part.type === "year")?.value}-${todayParts.find((part) => part.type === "month")?.value}-${todayParts.find((part) => part.type === "day")?.value}`;
+  const bookingTimezone = artist?.timezone || studioTimezone;
   const [calendarFocusDate, setCalendarFocusDate] = useState(todayKey);
   const today = bookings.filter((b) => b.status === "Confirmed" && b.dateKey === todayKey).length;
   const confirmedValue = bookings.filter((b) => b.status === "Confirmed").reduce((sum, b) => sum + b.amount, 0);
-  const greeting = new Date().getHours() < 12 ? "Good morning" : new Date().getHours() < 17 ? "Good afternoon" : "Good evening";
+  const currentTimeParts = new Intl.DateTimeFormat("en", { timeZone: studioTimezone, hour: "2-digit", minute: "2-digit", hourCycle: "h23" }).formatToParts(new Date());
+  const currentMinute = Number(currentTimeParts.find((part) => part.type === "hour")?.value || 0) * 60 + Number(currentTimeParts.find((part) => part.type === "minute")?.value || 0);
+  const upcomingBookings = bookings.filter((booking) => {
+    if (!booking.dateKey || !["Confirmed", "Awaiting payment"].includes(booking.status)) return false;
+    if (booking.dateKey !== todayKey) return booking.dateKey > todayKey;
+    const [hour, minute] = (booking.timeKey || booking.time).split(":").map(Number);
+    return Number.isFinite(hour) && Number.isFinite(minute) && hour * 60 + minute >= currentMinute;
+  }).sort((a, b) => `${a.dateKey} ${a.timeKey || a.time}`.localeCompare(`${b.dateKey} ${b.timeKey || b.time}`));
+  const studioHour = Number(new Intl.DateTimeFormat("en", { timeZone: studioTimezone, hour: "2-digit", hourCycle: "h23" }).format(new Date()));
+  const greeting = studioHour < 12 ? "Good morning" : studioHour < 17 ? "Good afternoon" : "Good evening";
   const headingCopy = activeNav === "Overview" ? "Here’s what’s happening at your studio today." : ({ Bookings: "Manage new requests and upcoming appointments.", Calendar: "Your appointments, organized by date.", Services: "The services currently listed on your booking page.", "Travel areas": "Where you’re available to travel for appointments.", "Deposits & policies": "The terms clients see before booking.", Settings: "Your studio profile and public booking details." } as Record<string, string>)[activeNav] || "Manage your studio on BeatBook.";
   const calendarYear = monthAnchor.getFullYear();
   const calendarMonth = monthAnchor.getMonth();
@@ -95,7 +127,7 @@ export default function BeatBook({ initialView = "dashboard", allowSwitch = true
   const monthLabel = new Intl.DateTimeFormat("en", { month: "long", year: "numeric" }).format(monthAnchor);
   const selectedLocalDate = selectedDate ? new Date(`${selectedDate}T12:00:00`) : null;
   const prettySelectedDate = selectedLocalDate ? new Intl.DateTimeFormat("en", { month: "long", day: "numeric", year: "numeric" }).format(selectedLocalDate) : "Choose a date";
-  const todayLocal = new Date().toISOString().slice(0, 10);
+  const todayLocal = dateKeyInZone(new Date(), bookingTimezone);
   const weekday = selectedLocalDate?.getDay();
   const dayHours = workingHours?.find((item) => item.weekday === weekday && !item.is_closed);
   const selectedDuration = chosen.duration_minutes;
@@ -104,7 +136,10 @@ export default function BeatBook({ initialView = "dashboard", allowSwitch = true
     const [closeHour, closeMinute] = dayHours.closing_time.slice(0, 5).split(":").map(Number);
     const first = Math.ceil((openHour * 60 + openMinute) / 30) * 30;
     const last = closeHour * 60 + closeMinute - selectedDuration;
-    return Array.from({ length: Math.max(0, Math.floor((last - first) / 30) + 1) }, (_, i) => first + i * 30).map((minutes) => `${String(Math.floor(minutes / 60)).padStart(2, "0")}:${String(minutes % 60).padStart(2, "0")}`);
+    const slots = Array.from({ length: Math.max(0, Math.floor((last - first) / 30) + 1) }, (_, i) => first + i * 30);
+    const nowParts = new Intl.DateTimeFormat("en", { timeZone: bookingTimezone, hour: "2-digit", minute: "2-digit", hourCycle: "h23" }).formatToParts(new Date());
+    const nowMinute = Number(nowParts.find((part) => part.type === "hour")?.value || 0) * 60 + Number(nowParts.find((part) => part.type === "minute")?.value || 0);
+    return slots.filter((minutes) => selectedDate !== todayLocal || minutes > nowMinute).map((minutes) => `${String(Math.floor(minutes / 60)).padStart(2, "0")}:${String(minutes % 60).padStart(2, "0")}`);
   })() : workingHours ? [] : ["10:00", "13:00", "16:00"];
 
   useEffect(() => {
@@ -153,6 +188,18 @@ export default function BeatBook({ initialView = "dashboard", allowSwitch = true
     const match = serviceOptions.findIndex((service) => mood.keywords.some((keyword) => `${service.name} ${service.description}`.toLowerCase().includes(keyword)));
     if (match >= 0) setSelected(match);
   }
+  async function shareBookingPage() {
+    const url = window.location.href;
+    try {
+      if (navigator.share) await navigator.share({ title: `${artist?.business_name || "Studio Sola"} on BeatBook`, url });
+      else {
+        await navigator.clipboard.writeText(url);
+        setNotice("Booking page link copied. Share it with someone who’d love a little glam.");
+      }
+    } catch (error) {
+      if (error instanceof Error && error.name !== "AbortError") setNotice("Couldn’t share the link. Copy it from your browser’s address bar.");
+    }
+  }
   function confirmRequest() {
     if (!artist || chosen.id.startsWith("demo-") || chosenArea.id.startsWith("demo-")) {
       setBookingError("This is a preview booking page. Publish a studio profile and services to accept real requests.");
@@ -181,7 +228,7 @@ export default function BeatBook({ initialView = "dashboard", allowSwitch = true
 
     {view === "dashboard" ? <div className="dashboard-layout">
       <aside className="sidebar">
-        <div className="workspace-label">YOUR STUDIO</div><div className="artist-mini"><div className="artist-avatar">{(studioName || "S")[0]}</div><div><strong>{studioName || "Your studio"}</strong><span>Makeup artist <i className="verified">✓</i></span></div><span className="dots">•••</span></div>
+        <div className="workspace-label">YOUR STUDIO</div><div className="artist-mini"><div className="artist-avatar">{(studioName || "S")[0]}</div><div><strong>{studioName || "Your studio"}</strong><span>Independent artist</span></div></div>
         <nav className="side-nav" aria-label="Artist dashboard">
           {navItems.map((item, i) => <button key={item} className={activeNav === item ? "nav-item active" : "nav-item"} onClick={() => setActiveNav(item)}><span className="nav-icon">{["⌂", "▤", "▦", "✳", "⌖", "◇", "⚙"][i]}</span>{item}{item === "Bookings" && pending.length > 0 && <span className="nav-count">{pending.length}</span>}</button>)}
         </nav>
@@ -193,9 +240,9 @@ export default function BeatBook({ initialView = "dashboard", allowSwitch = true
         {notice && <div className="notice"><span>✓</span>{notice}<button onClick={() => setNotice("")} aria-label="Dismiss">×</button></div>}
         {activeNav === "Overview" ? <>
         <div className="metric-grid">
-          <article className="metric-card"><div className="metric-top"><span>Appointments today</span><span className="metric-icon blush">✳</span></div><div className="metric-value">{today}<small className="trend">↗ 2 this week</small></div><div className="metric-foot">You’re right on schedule</div></article>
+          <article className="metric-card"><div className="metric-top"><span>Appointments today</span><span className="metric-icon blush">✳</span></div><div className="metric-value">{today}</div><div className="metric-foot">Confirmed for today</div></article>
           <article className="metric-card"><div className="metric-top"><span>Pending requests</span><span className="metric-icon amber">◷</span></div><div className="metric-value">{pending.length}<small className="attention">Needs your attention</small></div><div className="metric-foot">Requests expire after 24 hours</div></article>
-          <article className="metric-card"><div className="metric-top"><span>Upcoming appointments</span><span className="metric-icon lavender">▦</span></div><div className="metric-value">{bookings.filter((b) => b.status === "Confirmed" || b.status === "Awaiting payment").length}</div><div className="metric-foot">Confirmed and awaiting deposit</div></article>
+          <article className="metric-card"><div className="metric-top"><span>Upcoming appointments</span><span className="metric-icon lavender">▦</span></div><div className="metric-value">{upcomingBookings.length}</div><div className="metric-foot">Confirmed and awaiting deposit</div></article>
           <article className="metric-card revenue"><div className="metric-top"><span>Confirmed value</span><span className="metric-icon green">₦</span></div><div className="metric-value">₦{confirmedValue.toLocaleString()}</div><div className="metric-foot">Total value of confirmed appointments</div></article>
         </div>
 
@@ -204,15 +251,16 @@ export default function BeatBook({ initialView = "dashboard", allowSwitch = true
             <section className="card booking-card"><div className="section-head"><div><h2>Booking requests <span className="pill-count">{pending.length}</span></h2><p>Review and respond to new requests</p></div><button className="text-link" onClick={() => setActiveNav("Bookings")}>View all <span>→</span></button></div>
               {pending.length ? pending.map((b) => <div className="request-row" key={b.id}><div className="client-photo">{b.client.split(" ").map(n => n[0]).join("")}</div><div className="request-info"><div className="client-line"><strong>{b.client}</strong><span className="status amber-status">{b.status}</span></div><div className="request-details">{b.service} <span>·</span> {b.date} at {b.time}</div><div className="request-meta">⌖ {b.area} <span>·</span> ₦{b.amount.toLocaleString()}</div></div><div className="request-actions">{b.status === "Pending approval" ? <><button className="quiet-button" onClick={() => setNotice(`Details for ${b.client}: ${b.service}, ${b.date} at ${b.time}.`)}>Review</button><button className="approve-button" disabled={bookingPending} onClick={() => decide(b.id, true)}>Approve</button><button className="decline-button" disabled={bookingPending} onClick={() => decide(b.id, false)} aria-label="Decline request">×</button></> : <><button className="quiet-button" disabled={bookingPending} onClick={() => reviewChange(b.id, false, b.status as "Cancellation requested" | "Reschedule requested")}>Decline</button><button className="approve-button" disabled={bookingPending} onClick={() => reviewChange(b.id, true, b.status as "Cancellation requested" | "Reschedule requested")}>Approve</button></>}</div></div>) : <div className="empty-state">All caught up. New requests will appear here.</div>}
             </section>
-            <section className="card appointments-card"><div className="section-head"><div><h2>Upcoming appointments</h2><p>Your next few bookings</p></div><button className="select-small" onClick={() => setActiveNav("Calendar")}>This week⌄</button></div>
+            <section className="card appointments-card"><div className="section-head"><div><h2>Upcoming appointments</h2><p>Your next few bookings</p></div><button className="select-small" onClick={() => setActiveNav("Calendar")}>Open calendar →</button></div>
               <div className="appointment-head"><span>CLIENT</span><span>DATE & TIME</span><span>SERVICE</span><span>STATUS</span></div>
-              {bookings.slice(0, 4).map((b, i) => <div className="appointment-row" key={b.id}><div className="appointment-client"><span className={`tiny-avatar tone-${i % 4}`}>{b.client[0]}</span><strong>{b.client}</strong></div><div>{b.date}<small>{b.time}</small></div><div>{b.service}</div><div><span className={`status ${b.status === "Confirmed" ? "green-status" : b.status === "Pending approval" ? "amber-status" : "blue-status"}`}>{b.status}</span></div></div>)}
+              {upcomingBookings.slice(0, 4).map((b, i) => <div className="appointment-row" key={b.id}><div className="appointment-client"><span className={`tiny-avatar tone-${i % 4}`}>{b.client[0]}</span><strong>{b.client}</strong></div><div>{b.date}<small>{b.time}</small></div><div>{b.service}</div><div><span className={`status ${b.status === "Confirmed" ? "green-status" : "blue-status"}`}>{b.status}</span></div></div>)}
+              {!upcomingBookings.length && <div className="empty-state">No upcoming appointments yet. Approved bookings will appear here.</div>}
             </section>
           </div>
           <aside className="right-column">
-            <section className="card calendar-card"><div className="section-head"><div><h2>Your calendar</h2><p>{monthLabel}</p></div><div className="calendar-controls"><button aria-label="Previous month" onClick={() => setMonthAnchor(new Date(calendarYear, calendarMonth - 1, 1))}>‹</button><button aria-label="Next month" onClick={() => setMonthAnchor(new Date(calendarYear, calendarMonth + 1, 1))}>›</button></div></div><div className="calendar-grid"><div className="weekday">M</div><div className="weekday">T</div><div className="weekday">W</div><div className="weekday">T</div><div className="weekday">F</div><div className="weekday">S</div><div className="weekday">S</div>{monthDays.map((d, i) => { const key = d ? `${calendarYear}-${String(calendarMonth + 1).padStart(2, "0")}-${String(d).padStart(2, "0")}` : ""; return <button key={i} disabled={!d} className={`calendar-day ${key === todayKey ? "today" : ""} ${bookings.some((b) => b.dateKey === key) ? "has-event" : ""}`} onClick={() => { if (key) { setCalendarFocusDate(key); setActiveNav("Calendar"); } }}>{d}</button>; })}</div><div className="calendar-legend"><span><i className="legend-dot plum-dot"/> Appointment</span><span><i className="legend-dot gray-dot"/> Today</span></div></section>
-            <section className="setup-card"><div className="setup-header"><div className="setup-icon">✳</div><span>YOUR STUDIO</span><span className="setup-progress">4/5</span></div><h3>Almost ready to shine</h3><p>Complete your setup to start receiving bookings.</p><div className="progress-track"><i/></div><div className="progress-label"><span>Profile & services</span><strong>80%</strong></div><button className="setup-action" onClick={() => setActiveNav("Services")}>Continue setup <span>→</span></button></section>
-            <section className="tip-card"><span className="tip-icon">✧</span><div><strong>A little studio tip</strong><p>Profiles with a photo get 2× more booking requests. Add yours to stand out.</p><button onClick={() => setActiveNav("Settings")}>Update your profile <span>→</span></button></div></section>
+            <section className="card calendar-card"><div className="section-head"><div><h2>Your calendar</h2><p>{monthLabel}</p></div><div className="calendar-controls"><button aria-label="Previous month" onClick={() => setMonthAnchor(new Date(calendarYear, calendarMonth - 1, 1))}>‹</button><button aria-label="Next month" onClick={() => setMonthAnchor(new Date(calendarYear, calendarMonth + 1, 1))}>›</button></div></div><div className="calendar-grid"><div className="weekday">M</div><div className="weekday">T</div><div className="weekday">W</div><div className="weekday">T</div><div className="weekday">F</div><div className="weekday">S</div><div className="weekday">S</div>{monthDays.map((d, i) => { const key = d ? `${calendarYear}-${String(calendarMonth + 1).padStart(2, "0")}-${String(d).padStart(2, "0")}` : ""; return <button key={i} disabled={!d} className={`calendar-day ${key === todayKey ? "today" : ""} ${bookings.some((b) => b.dateKey === key && ["Confirmed", "Awaiting payment", "Pending approval", "Cancellation requested", "Reschedule requested"].includes(b.status)) ? "has-event" : ""}`} onClick={() => { if (key) { setCalendarFocusDate(key); setActiveNav("Calendar"); } }}>{d}</button>; })}</div><div className="calendar-legend"><span><i className="legend-dot plum-dot"/> Appointment</span><span><i className="legend-dot gray-dot"/> Today</span></div></section>
+            <section className="setup-card"><div className="setup-header"><div className="setup-icon">✳</div><span>STUDIO SHORTCUT</span></div><h3>Keep your page polished</h3><p>Update your profile, services, hours, and travel areas whenever things change.</p><Link className="setup-action" href="/onboarding">Edit studio details <span>→</span></Link></section>
+            <section className="tip-card"><span className="tip-icon">✧</span><div><strong>See your booking page</strong><p>Check the details and services your clients see before they book.</p><button onClick={() => setView("book")}>Preview booking page <span>→</span></button></div></section>
           </aside>
         </div>
         <footer className="footer"><span>© {new Date().getFullYear()} BeatBook</span><span>Made for artists, with love <b>♥</b></span><span>Help&nbsp;&nbsp; · &nbsp;&nbsp;Privacy&nbsp;&nbsp; · &nbsp;&nbsp;Terms</span></footer>
@@ -223,7 +271,7 @@ export default function BeatBook({ initialView = "dashboard", allowSwitch = true
       <div className="booking-intro"><div className="booking-intro-copy"><span className="eyebrow">MEET YOUR ARTIST</span><h1>Make room for a little <em>magic.</em></h1><p>Book your next beautiful moment with {artist?.business_name || "your artist"}.</p></div><div className="booking-hero-image" role="img" aria-label="A makeup artist getting a client ready for a beauty appointment" style={{ backgroundImage: `url("${artist?.profile_image_url || heroPhoto}")` }}><span>YOUR MOMENT, YOUR WAY</span></div></div>
       {notice && <div className="notice booking-notice"><span>✓</span>{notice}<button onClick={() => setNotice("")} aria-label="Dismiss">×</button></div>}
       <div className="booking-layout"><div className="booking-main">
-        <section className="booking-section artist-card"><div className="artist-portrait">{artist?.business_name?.[0] || "S"}<span className="portrait-flower">✿</span></div><div><span className="verified-label">✦ VERIFIED ARTIST</span><h2>{artist?.business_name || "Studio Sola"}</h2><p>Makeup artist · {artist?.business_location || "Lagos, Nigeria"}</p><div className="artist-rating">★★★★★ <span>4.9 <i>(38 reviews)</i></span></div></div><button className="share-button" aria-label="Share artist">↗</button></section>
+        <section className="booking-section artist-card"><div className="artist-portrait" style={artist?.profile_image_url ? { backgroundImage: `url("${artist.profile_image_url}")`, backgroundSize: "cover", backgroundPosition: "center", color: "transparent" } : undefined}>{artist?.business_name?.[0] || "S"}<span className="portrait-flower">✿</span></div><div><span className="verified-label">BEAUTY PROFESSIONAL</span><h2>{artist?.business_name || "Studio Sola"}</h2><p>Makeup artist · {artist?.business_location || "Lagos, Nigeria"}</p></div><button className="share-button" aria-label="Share booking page" title="Share booking page" onClick={shareBookingPage}>↗</button></section>
         <section className="booking-section glam-finder-section"><div className="booking-step"><span>✦</span><div><h2>The Glam Moodboard</h2><p>Pick your energy and we’ll find a service to match.</p></div><span className="glam-edition">YOUR GIRLIE MOMENT</span></div><div className="glam-mood-grid">{glamMoods.map((mood, i) => <button key={mood.id} aria-pressed={selectedMood === mood.id} className={`glam-mood-card glam-mood-${i} ${selectedMood === mood.id ? "glam-mood-selected" : ""}`} style={{ backgroundImage: `linear-gradient(180deg, #24162110 15%, #241621c9 100%), url("${servicePhotos[i % servicePhotos.length]}")` }} onClick={() => chooseGlamMood(mood.id)}><span className="glam-mood-icon">{mood.icon}</span><span className="glam-mood-copy"><strong>{mood.name}</strong><small>{mood.note}</small></span><span className="glam-mood-check">✓</span></button>)}</div>{selectedMood && <div className="glam-recommendation"><span className="glam-recommendation-spark">✦</span><div><small>YOUR VIBE, YOUR LOOK</small><strong>{chosen.name}</strong><span>We picked this service to match your mood. You can change it below.</span></div><button onClick={() => document.getElementById("service-options")?.scrollIntoView({ behavior: "smooth", block: "center" })}>See service <span>↓</span></button></div>}</section>
         <section id="service-options" className="booking-section"><div className="booking-step"><span>01</span><div><h2>Choose your service</h2><p>Find the look that feels like you.</p></div></div><div className="service-grid">{serviceOptions.map((service, i) => <button className={`service-card ${selected === i ? "selected" : ""}`} key={service.id} onClick={() => { setSelected(i); setTime(""); }}><div className={`service-art art-${i % 3}`} style={{ backgroundImage: `linear-gradient(180deg, #25162212, #25162266), url("${servicePhotos[i % servicePhotos.length]}")` }}><span>{service.icon}</span>{service.tag && <i>{service.tag}</i>}</div><div className="service-copy"><h3>{service.name}</h3><p>{service.description}</p><div className="service-meta"><strong>₦{service.price_ngn.toLocaleString()}</strong><span>◷ {durationLabel(service.duration_minutes)}</span></div></div>{selected === i && <span className="selected-check">✓</span>}</button>)}</div></section>
         <section className="booking-section"><div className="booking-step"><span>02</span><div><h2>Pick a date & time</h2><p>Choose a moment that works for you.</p></div></div><div className="date-panel"><div className="date-month"><button aria-label="Previous month" onClick={() => setMonthAnchor(new Date(calendarYear, calendarMonth - 1, 1))}>‹</button><strong>{monthLabel}</strong><button aria-label="Next month" onClick={() => setMonthAnchor(new Date(calendarYear, calendarMonth + 1, 1))}>›</button></div><div className="date-grid"><span>M</span><span>T</span><span>W</span><span>T</span><span>F</span><span>S</span><span>S</span>{monthDays.map((d, i) => { const dateString = d ? `${calendarYear}-${String(calendarMonth + 1).padStart(2, "0")}-${String(d).padStart(2, "0")}` : ""; return <button key={i} disabled={!d || dateString < todayLocal} className={`${dateString === selectedDate ? "chosen-day" : ""} ${dateString === todayLocal ? "today-date" : ""}`} onClick={() => { if (dateString) { setSelectedDate(dateString); setTime(""); } }}>{d}</button>; })}</div><div className="time-label">AVAILABLE TIMES <span>{artist?.timezone || "Africa/Lagos"}</span></div><div className="time-options">{availableTimes.map((t) => <button className={time === t ? "time-selected" : ""} key={t} onClick={() => setTime(t)}>{displayTime(t)}</button>)}{availableTimes.length === 0 && <span className="no-times">No times available for this date.</span>}</div></div></section>
@@ -231,7 +279,7 @@ export default function BeatBook({ initialView = "dashboard", allowSwitch = true
         <div className="policy-note"><span>♡</span><p><strong>A note from {artist?.business_name || "Studio Sola"}</strong><br/>{depositPercent}% deposit secures your appointment after the artist approves your request. {cancellationTerms || "Cancellations are accepted up to 48 hours before your booking."}</p></div>
       </div>
       <aside className="booking-aside"><div className="summary-card"><span className="eyebrow">YOUR APPOINTMENT</span><h2>A little look at the details.</h2><div className="summary-service"><span className="summary-flower">{chosen.icon}</span><div><strong>{chosen.name}</strong><span>{durationLabel(chosen.duration_minutes)} · {artist?.business_name || "Studio Sola"}</span></div><strong>₦{chosen.price_ngn.toLocaleString()}</strong></div><div className="summary-date"><span>▦</span><div><strong>{prettySelectedDate} · {time ? displayTime(time) : "Choose a time"}</strong><small>{artist?.timezone || "Africa/Lagos"}</small></div></div><div className="summary-line"><span>Service</span><strong>₦{chosen.price_ngn.toLocaleString()}</strong></div><div className="summary-line"><span>Travel · {chosenArea?.name}</span><strong>₦{travelFee.toLocaleString()}</strong></div><div className="summary-total"><span>Total</span><strong>₦{total.toLocaleString()}</strong></div><div className="deposit-line"><span>Deposit to secure</span><strong>₦{deposit.toLocaleString()}</strong></div><div className="balance-line"><span>Remaining after deposit</span><span>₦{(total - deposit).toLocaleString()}</span></div><button className="button primary request-button" onClick={submitBooking}>Request this appointment <span>→</span></button><p className="no-charge">No payment is taken until your artist approves.</p><div className="secure-line">♡ &nbsp;Your details are always kept private</div></div><div className="aside-help"><span>Need a little help?</span><button onClick={() => setNotice(`Contact ${artist?.business_name || "your artist"} at ${artist?.contact_email || "their listed email"}`)}>Ask your artist ↗</button></div></aside></div>
-      <footer className="booking-footer"><span>© 2025 BeatBook</span><span>Beauty bookings, beautifully organized.</span><span>Privacy · Terms · Help</span></footer>
+      <footer className="booking-footer"><span>© {new Date().getFullYear()} BeatBook</span><span>Beauty bookings, beautifully organized.</span><span>Privacy · Terms · Help</span></footer>
     </div>}
 
     {modal && <div className="modal-backdrop" role="presentation" onMouseDown={(e) => { if (e.target === e.currentTarget) setModal(false); }}><section className="confirm-modal" role="dialog" aria-modal="true" aria-labelledby="confirm-title"><button className="modal-close" onClick={() => setModal(false)}>×</button><div className="modal-flower">✿</div><span className="eyebrow">ONE LAST THING</span><h2 id="confirm-title">Let’s send your request.</h2><p>{artist?.business_name || "Studio Sola"} will review your appointment and get back to you within 24 hours. You won’t be charged now.</p><div className="modal-detail"><span>{chosen.name} · {prettySelectedDate} at {time ? displayTime(time) : "Choose a time"}</span><strong>₦{total.toLocaleString()} total</strong></div>{bookingError && <p className="auth-error" role="alert">{bookingError}{bookingError.startsWith("Sign in") && <> <Link href={`/sign-in?next=${encodeURIComponent(`/book/${artist?.booking_slug || ""}`)}`}>Sign in</Link> or <Link href="/sign-up">create an account</Link>.</>}</p>}<button className="button primary" onClick={confirmRequest} disabled={bookingPending}>{bookingPending ? "Sending request…" : "Send booking request"} <span>→</span></button><button className="modal-cancel" onClick={() => setModal(false)}>I’d like to make a change</button><small>Deposit of ₦{deposit.toLocaleString()} only after approval · Simulated payments only</small></section></div>}
