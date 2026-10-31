@@ -137,4 +137,6 @@ body{font-size:15px;line-height:1.55}
 
 .setup-action{text-decoration:none}
 .booking-auth-prompt{margin:13px 0 0;padding:12px 14px;border:1px solid #eadde5;border-radius:8px;background:#faf5f8;color:#625360;font-size:12px;line-height:1.6}.booking-auth-prompt a{color:var(--plum);font-weight:700;text-underline-offset:3px}
+.travel-area-fields{min-width:0;padding:16px;border:1px solid var(--line);border-radius:8px}.travel-area-fields>legend{padding:0 6px;color:#766a77;font-size:10px;font-weight:700;letter-spacing:.8px}.travel-area-fields>p{margin:0 0 9px;color:#8c828c;font-size:11px}.travel-area-row{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr) auto;gap:12px;align-items:end;padding:10px 0;border-bottom:1px solid #f0ebee}.travel-area-row .field-label{min-width:0;margin:0}.remove-area-button{height:40px;padding:0 10px;border:1px solid #e9dfe5;border-radius:6px;background:#fff;color:#795c70;font:600 11px var(--sans);cursor:pointer}.remove-area-button:disabled{opacity:.45;cursor:not-allowed}.add-area-button{min-height:38px;margin-top:12px;font-size:11px}
+@media(max-width:620px){.travel-area-fields{padding:12px}.travel-area-row{grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:8px}.travel-area-row .remove-area-button{grid-column:2;justify-self:end;height:34px}.travel-area-row .field-label input{min-width:0;padding:0 8px;font-size:12px}}
 
