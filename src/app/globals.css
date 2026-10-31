@@ -135,3 +135,5 @@ body{font-size:15px;line-height:1.55}
 @media(max-width:520px){.glam-finder-section .booking-step{display:grid;grid-template-columns:26px minmax(0,1fr);align-items:start}.glam-finder-section .booking-step>span:first-child{grid-column:1;grid-row:1}.glam-finder-section .booking-step>div{grid-column:2;grid-row:1;min-width:0}.glam-edition{grid-column:2;grid-row:2;margin:3px 0 0;white-space:normal;font-size:8px;letter-spacing:.6px}.glam-recommendation{align-items:flex-start;flex-wrap:wrap}.glam-recommendation>div{width:calc(100% - 48px);flex:unset}.glam-recommendation button{margin-left:48px}.glam-mood-copy strong{font-size:14px}}
 @media(prefers-reduced-motion:reduce){.glam-mood-card,.glam-mood-check{transition:none}.glam-recommendation{animation:none}}
 
+.setup-action{text-decoration:none}
+
